@@ -1,0 +1,206 @@
+{
+  "entities": {
+    "users": {
+      "title": "User",
+      "description": "User profile with personal information and account settings",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "username": { "type": "string" },
+        "displayName": { "type": "string" },
+        "birthDate": { "type": "string" },
+        "country": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["uid", "email", "username", "birthDate", "country"]
+    },
+    "usernames": {
+      "title": "Username Mapping",
+      "description": "Mapping from username to uid for handle uniqueness",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["uid"]
+    },
+    "stories": {
+      "title": "Story",
+      "description": "24-hour ephemeral content created by users",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "authorUid": { "type": "string" },
+        "authorUsername": { "type": "string" },
+        "authorDisplayName": { "type": "string" },
+        "authorPhotoURL": { "type": "string" },
+        "mediaUrl": { "type": "string" },
+        "caption": { "type": "string" },
+        "bgColor": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "expiresAt": { "type": "string" },
+        "viewers": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "likes": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "required": ["authorUid", "authorUsername", "createdAt", "expiresAt"]
+    },
+    "posts": {
+      "title": "Post",
+      "description": "Feed publication created by users",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "authorUid": { "type": "string" },
+        "authorUsername": { "type": "string" },
+        "authorDisplayName": { "type": "string" },
+        "authorPhotoURL": { "type": "string" },
+        "content": { "type": "string" },
+        "mediaUrl": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "likes": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "likesCount": { "type": "number" },
+        "viewsCount": { "type": "number" }
+      },
+      "required": ["authorUid", "authorUsername", "createdAt"]
+    },
+    "curtidas": {
+      "title": "Curtida",
+      "description": "Registro de curtidas ativas de usuários em publicações",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "post_id": { "type": "string" },
+        "usuario_id": { "type": "string" },
+        "criado_em": { "type": "string" }
+      },
+      "required": ["post_id", "usuario_id", "criado_em"]
+    },
+    "visualizacoes": {
+      "title": "Visualizacao",
+      "description": "Registro único de visualização de post com permanência na tela",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "post_id": { "type": "string" },
+        "usuario_id": { "type": "string" },
+        "criado_em": { "type": "string" }
+      },
+      "required": ["post_id", "usuario_id", "criado_em"]
+    },
+    "follows": {
+      "title": "Follow",
+      "description": "Relationship between follower and following",
+      "type": "object",
+      "properties": {
+        "followerUid": { "type": "string" },
+        "followingUid": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["followerUid", "followingUid"]
+    },
+    "comments": {
+      "title": "Comment",
+      "description": "Post comments and nested replies",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "post_id": { "type": "string" },
+        "autor_id": { "type": "string" },
+        "autor_username": { "type": "string" },
+        "autor_displayName": { "type": "string" },
+        "autor_photoURL": { "type": "string" },
+        "texto": { "type": "string" },
+        "comentario_pai_id": { "type": ["string", "null"] },
+        "criado_em": { "type": "string" },
+        "likes_count": { "type": "number" },
+        "liked_by": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "resposta_para_username": { "type": "string" }
+      },
+      "required": ["post_id", "autor_id", "texto", "criado_em"]
+    },
+    "conversas": {
+      "title": "Conversa",
+      "description": "Conversas diretas e grupos",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "tipo": { "type": "string", "enum": ["individual", "grupo"] },
+        "participantes": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "criado_em": { "type": "string" },
+        "status": { "type": "string", "enum": ["ativa", "pendente", "bloqueada_permanente"] },
+        "nome_grupo": { "type": "string" },
+        "foto_grupo": { "type": "string" },
+        "solicitante_id": { "type": "string" },
+        "destinatario_id": { "type": "string" },
+        "ultima_mensagem": { "type": "object" },
+        "atualizado_em": { "type": "string" }
+      },
+      "required": ["tipo", "participantes", "criado_em"]
+    },
+    "mensagens": {
+      "title": "Mensagem",
+      "description": "Mensagens de chat (texto, imagem, post_compartilhado)",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "conversa_id": { "type": "string" },
+        "autor_id": { "type": "string" },
+        "tipo": { "type": "string", "enum": ["texto", "imagem", "post_compartilhado"] },
+        "conteudo": { "type": "string" },
+        "criado_em": { "type": "string" },
+        "lida": { "type": "boolean" },
+        "post_preview": { "type": "object" }
+      },
+      "required": ["conversa_id", "autor_id", "tipo", "conteudo", "criado_em"]
+    },
+    "notificacoes": {
+      "title": "Notificacao",
+      "description": "Notificações do usuário (curtidas, comentários, seguidores, colaborações)",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "usuario_destinatario_id": { "type": "string" },
+        "usuario_origem_id": { "type": "string" },
+        "usuario_origem_username": { "type": "string" },
+        "usuario_origem_displayName": { "type": "string" },
+        "usuario_origem_photoURL": { "type": "string" },
+        "tipo": {
+          "type": "string",
+          "enum": [
+            "curtida_post",
+            "comentario",
+            "novo_seguidor",
+            "convite_colaboracao",
+            "curtida_comentario",
+            "solicitacao_mensagem",
+            "mencao"
+          ]
+        },
+        "post_id": { "type": ["string", "null"] },
+        "comentario_id": { "type": ["string", "null"] },
+        "conteudo_extra": { "type": ["string", "null"] },
+        "lida": { "type": "boolean" },
+        "criado_em": { "type": "string" }
+      },
+      "required": ["usuario_destinatario_id", "usuario_origem_id", "tipo", "criado_em"]
+    }
+  }
+}

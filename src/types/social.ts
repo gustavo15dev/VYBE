@@ -1,0 +1,201 @@
+import { UserProfile } from './user';
+
+export type MediaType = 'text' | 'image' | 'video';
+
+export interface PostCollaborator {
+  usuario_id: string;
+  usuario_username: string;
+  usuario_displayName: string;
+  usuario_photoURL?: string;
+  status: 'pendente' | 'aceito' | 'recusado';
+}
+
+export interface StoryItem {
+  id: string;
+  authorUid: string;
+  authorUsername: string;
+  authorDisplayName: string;
+  authorPhotoURL?: string;
+  mediaType?: MediaType;
+  mediaUrl?: string;
+  caption?: string;
+  bgColor?: string;
+  videoDuration?: number;
+  createdAt: string; // ISO string
+  expiresAt: string; // ISO string
+  viewers: string[]; // array of uids
+  likes?: string[]; // array of uids
+}
+
+export interface UserStoriesGroup {
+  authorUid: string;
+  authorUsername: string;
+  authorDisplayName: string;
+  authorPhotoURL?: string;
+  hasUnseen: boolean;
+  isCurrentUser: boolean;
+  stories: StoryItem[];
+  latestCreatedAt: string;
+}
+
+export interface CurtidaItem {
+  id: string;
+  post_id: string;
+  usuario_id: string;
+  criado_em: string;
+}
+
+export interface VisualizacaoItem {
+  id: string;
+  post_id: string;
+  usuario_id: string;
+  criado_em: string;
+}
+
+export interface PostItem {
+  id: string;
+  authorUid: string;
+  authorUsername: string;
+  authorDisplayName: string;
+  authorPhotoURL?: string;
+  content: string; // legenda
+  mediaType?: MediaType; // tipo: "image" | "video" | "text"
+  mediaUrls?: string[]; // midias: []
+  mediaUrl?: string;
+  thumbnailUrl?: string;
+  videoDuration?: number;
+  collaborators?: PostCollaborator[]; // colaboradores: [{ usuario_id, status: "pendente" | "aceito" | "recusado" }]
+  createdAt: string; // criado_em: timestamp
+  likes: string[]; // likes
+  likesCount?: number;
+  viewsCount?: number;
+  commentsCount?: number;
+}
+
+export interface UserRelationship {
+  user: UserProfile;
+  iFollow: boolean; // eu_sigo_essa_pessoa
+  followsMe: boolean; // essa_pessoa_me_segue
+  mutualFriendsCount: number; // amigos_em_comum_count
+}
+
+export interface CommentItem {
+  id: string;
+  post_id: string;
+  autor_id: string;
+  autor_username: string;
+  autor_displayName?: string;
+  autor_photoURL?: string;
+  texto: string;
+  comentario_pai_id: string | null; // null = comentário raiz, senão é resposta a outro comentário
+  criado_em: string; // ISO string
+  likes_count: number;
+  liked_by?: string[]; // uids de quem curtiu
+  resposta_para_username?: string; // username a quem se está respondendo
+}
+
+export type MessageContentType = 'texto' | 'imagem' | 'post_compartilhado';
+
+export interface PostPreviewData {
+  id: string;
+  authorUid?: string;
+  authorUsername: string;
+  authorDisplayName?: string;
+  authorPhotoURL?: string;
+  content: string;
+  mediaUrl?: string;
+  mediaType?: MediaType;
+  likesCount?: number;
+}
+
+export interface ChatMessage {
+  id: string;
+  conversa_id: string;
+  autor_id: string;
+  autor_username?: string;
+  tipo: MessageContentType;
+  conteudo: string; // texto, URL de imagem, ou post_id
+  criado_em: string;
+  lida: boolean;
+  post_preview?: PostPreviewData;
+}
+
+export type ConversationType = 'individual' | 'grupo';
+export type ConversationStatus = 'ativa' | 'pendente' | 'bloqueada_permanente';
+
+export interface ConversationItem {
+  id: string;
+  tipo: ConversationType;
+  participantes: string[]; // array de uids dos participantes
+  criado_em: string;
+  status: ConversationStatus;
+  nome_grupo?: string;
+  foto_grupo?: string;
+  solicitante_id?: string;
+  destinatario_id?: string;
+  ultima_mensagem?: {
+    texto: string;
+    autor_id: string;
+    tipo?: MessageContentType;
+    criado_em: string;
+    lida: boolean;
+  };
+  atualizado_em: string;
+}
+
+export type NotificationType =
+  | 'curtida_post'
+  | 'comentario'
+  | 'novo_seguidor'
+  | 'convite_colaboracao'
+  | 'curtida_comentario'
+  | 'solicitacao_mensagem'
+  | 'mencao';
+
+export interface NotificationItem {
+  id: string;
+  usuario_destinatario_id: string;
+  usuario_origem_id: string; // quem gerou a ação (ex: quem curtiu)
+  usuario_origem_username?: string;
+  usuario_origem_displayName?: string;
+  usuario_origem_photoURL?: string;
+  tipo: NotificationType;
+  post_id?: string | null;
+  comentario_id?: string | null;
+  conteudo_extra?: string | null; // e.g. snippet do comentário ou legenda
+  lida: boolean;
+  criado_em: string;
+}
+
+export interface AggregatedNotification {
+  id: string; // Group ID
+  tipo: NotificationType;
+  post_id?: string | null;
+  comentario_id?: string | null;
+  usuario_origem_principal: {
+    uid: string;
+    username: string;
+    displayName: string;
+    photoURL?: string;
+  };
+  outros_usuarios_count: number; // e.g., 4 se forem 5 curtidas
+  usuarios_origem: Array<{
+    uid: string;
+    username: string;
+    displayName: string;
+    photoURL?: string;
+  }>;
+  notificacao_ids: string[];
+  todas_lidas: boolean;
+  mais_recente_em: string;
+  conteudo_extra?: string | null;
+  post_preview?: {
+    id: string;
+    mediaUrl?: string;
+    mediaType?: MediaType;
+    content?: string;
+  };
+}
+
+
+

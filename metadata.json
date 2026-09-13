@@ -1,0 +1,6 @@
+{
+  "name": "VYBE",
+  "description": "Rede social multimídia moderna e minimalista para publicação de texto, fotos e vídeos leves, além de conexões e stories de 24 horas.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

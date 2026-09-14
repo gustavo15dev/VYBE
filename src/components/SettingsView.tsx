@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { UserProfile, UserNotificationPreferences } from '../types/user';
 import { collection, query, where, getDocs, setDoc, doc } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { db, auth } from '../lib/firebase';
 import {
   updateUserProfile,
   isUsernameAvailable,
   changeUserPassword,
+  deleteAccountPermanently,
 } from '../services/authService';
 import { blockUser as blockUserSocial, unblockUser as unblockUserSocial } from '../services/socialService';
 import { optimizeImage } from '../utils/mediaOptimizer';
@@ -113,6 +114,11 @@ export function SettingsView({
   // General Loading & Logout Modal State
   const [saving, setSaving] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deletingAccount, setDeletingAccount] = useState(false);
+  const [deleteConfirmationText, setDeleteConfirmationText] = useState('');
+  const [deletePasswordInput, setDeletePasswordInput] = useState('');
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleSubmitVerification = async () => {
@@ -146,6 +152,45 @@ export function SettingsView({
       onShowToast?.('Ocorreu um erro ao enviar sua solicitação. Tente novamente.', 'error');
     } finally {
       setSubmittingRequest(false);
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    setDeleteError(null);
+
+    if (deleteConfirmationText.trim().toUpperCase() !== 'EXCLUIR') {
+      setDeleteError('Por favor, digite a palavra "EXCLUIR" para confirmar.');
+      return;
+    }
+
+    const currentUser = auth.currentUser;
+    const isGoogle = currentUser?.providerData.some((p) => p.providerId === 'google.com');
+
+    if (!isGoogle && !deletePasswordInput) {
+      setDeleteError('Por favor, insira sua senha atual para confirmar.');
+      return;
+    }
+
+    setDeletingAccount(true);
+    try {
+      await deleteAccountPermanently(
+        currentUserProfile.uid,
+        currentUserProfile.username,
+        isGoogle ? undefined : deletePasswordInput
+      );
+
+      onShowToast?.('Sua conta foi excluída permanentemente. Sentiremos sua falta! ❤️', 'success');
+      setShowDeleteConfirm(false);
+      onLogoutRequested();
+    } catch (err: any) {
+      console.error('Error deleting account:', err);
+      if (err.message === 'reauthenticate-required') {
+        setDeleteError('Sua sessão expirou por segurança. Faça login novamente e repita este procedimento.');
+      } else {
+        setDeleteError(err.message || 'Ocorreu um erro ao excluir sua conta.');
+      }
+    } finally {
+      setDeletingAccount(false);
     }
   };
 
@@ -1300,6 +1345,34 @@ export function SettingsView({
                   </span>
                 </div>
               </div>
+
+              {/* Danger Zone */}
+              <div className="p-5 bg-rose-50 rounded-2xl border border-rose-100 space-y-4">
+                <div className="flex items-center gap-2">
+                  <UserX className="w-5 h-5 text-rose-600" />
+                  <h3 className="text-sm font-bold text-rose-900">Zona de Perigo</h3>
+                </div>
+
+                <p className="text-xs text-rose-700 leading-relaxed">
+                  Ao excluir sua conta, todas as suas fotos, posts, curtidas, conexões e conversas serão apagados de forma permanente e irreversível de nossos servidores.
+                </p>
+
+                <div className="flex justify-start">
+                  <button
+                    id="btn-delete-account-trigger"
+                    type="button"
+                    onClick={() => {
+                      setDeleteError(null);
+                      setDeleteConfirmationText('');
+                      setDeletePasswordInput('');
+                      setShowDeleteConfirm(true);
+                    }}
+                    className="px-4 py-2.5 bg-[#DC2626] hover:bg-rose-700 text-white font-semibold rounded-xl text-xs transition-colors cursor-pointer shadow-xs"
+                  >
+                    Excluir minha conta permanentemente
+                  </button>
+                </div>
+              </div>
             </div>
           )}
 
@@ -1751,6 +1824,104 @@ export function SettingsView({
                 className="flex-1 py-2.5 bg-[#DC2626] hover:bg-rose-700 text-white text-xs font-semibold rounded-xl shadow-xs transition-colors cursor-pointer"
               >
                 Sair da conta
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CONFIRM DELETE ACCOUNT MODAL */}
+      {showDeleteConfirm && (
+        <div
+          id="delete-account-confirm-modal"
+          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto"
+          onClick={() => {
+            if (!deletingAccount) setShowDeleteConfirm(false);
+          }}
+        >
+          <div
+            className="bg-white w-full max-w-md rounded-3xl p-6 sm:p-8 shadow-2xl border border-gray-100 text-left space-y-5 animate-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="w-12 h-12 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center">
+              <UserX className="w-6 h-6 stroke-[2.2]" />
+            </div>
+
+            <div className="space-y-1.5">
+              <h3 className="text-lg font-bold text-gray-900 tracking-tight">
+                Excluir conta permanentemente?
+              </h3>
+              <p className="text-xs text-gray-500 leading-relaxed">
+                Essa ação é definitiva e irreversível. Você perderá o acesso aos seus dados, fotos, posts, curtidas, mensagens e perfil na VYBE para sempre.
+              </p>
+            </div>
+
+            {deleteError && (
+              <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 font-medium flex items-start gap-2.5">
+                <AlertCircle className="w-4 h-4 shrink-0 text-rose-600 mt-0.5" />
+                <span className="flex-1 leading-normal">{deleteError}</span>
+              </div>
+            )}
+
+            <div className="space-y-4">
+              {/* If they are email-password user, ask for their password */}
+              {!auth.currentUser?.providerData.some((p) => p.providerId === 'google.com') && (
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-semibold text-gray-700">
+                    Confirme sua senha atual
+                  </label>
+                  <input
+                    id="input-delete-password"
+                    type="password"
+                    required
+                    value={deletePasswordInput}
+                    onChange={(e) => setDeletePasswordInput(e.target.value)}
+                    placeholder="Sua senha secreta"
+                    className="w-full px-3.5 py-2.5 bg-[#FAFBFB] border border-gray-200 rounded-xl text-xs focus:outline-none focus:border-[#548687]"
+                  />
+                </div>
+              )}
+
+              <div className="space-y-1.5">
+                <label className="block text-xs font-semibold text-gray-700">
+                  Digite <span className="font-bold text-rose-600">EXCLUIR</span> para confirmar
+                </label>
+                <input
+                  id="input-delete-confirm-text"
+                  type="text"
+                  required
+                  value={deleteConfirmationText}
+                  onChange={(e) => setDeleteConfirmationText(e.target.value)}
+                  placeholder="EXCLUIR"
+                  className="w-full px-3.5 py-2.5 bg-[#FAFBFB] border border-gray-200 rounded-xl text-xs focus:outline-none focus:border-[#548687] font-bold text-gray-900 placeholder:font-normal placeholder:text-gray-400"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3 pt-2">
+              <button
+                type="button"
+                disabled={deletingAccount}
+                onClick={() => setShowDeleteConfirm(false)}
+                className="flex-1 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-semibold rounded-xl transition-colors cursor-pointer disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                id="btn-confirm-delete-account"
+                type="button"
+                disabled={deletingAccount || deleteConfirmationText.trim().toUpperCase() !== 'EXCLUIR'}
+                onClick={handleDeleteAccount}
+                className="flex-1 py-2.5 bg-[#DC2626] hover:bg-rose-700 disabled:bg-rose-300 disabled:cursor-not-allowed text-white text-xs font-semibold rounded-xl shadow-xs transition-colors cursor-pointer flex items-center justify-center gap-2"
+              >
+                {deletingAccount ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Excluindo...</span>
+                  </>
+                ) : (
+                  <span>Excluir conta</span>
+                )}
               </button>
             </div>
           </div>

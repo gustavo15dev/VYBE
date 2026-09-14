@@ -7,6 +7,7 @@ import {
   updatePassword,
   EmailAuthProvider,
   reauthenticateWithCredential,
+  deleteUser,
   User
 } from 'firebase/auth';
 import {
@@ -17,9 +18,22 @@ import {
   deleteDoc,
   arrayUnion,
   arrayRemove,
+  collection,
+  query,
+  where,
+  getDocs,
+  limit,
 } from 'firebase/firestore';
 import { auth, db, googleProvider } from '../lib/firebase';
 import { UserProfile } from '../types/user';
+
+export async function isEmailAvailable(email: string): Promise<boolean> {
+  const cleanEmail = email.toLowerCase().trim();
+  if (!cleanEmail) return false;
+  const q = query(collection(db, 'users'), where('email', '==', cleanEmail), limit(1));
+  const snap = await getDocs(q);
+  return snap.empty;
+}
 
 export async function isUsernameAvailable(username: string): Promise<boolean> {
   const cleanUsername = username.toLowerCase().trim();
@@ -263,5 +277,53 @@ export async function unblockUser(currentUid: string, targetUid: string): Promis
   await updateDoc(userRef, {
     blockedUsers: arrayRemove(targetUid),
   });
+}
+
+export async function deleteAccountPermanently(uid: string, username: string, password?: string): Promise<void> {
+  const currentUser = auth.currentUser;
+  if (!currentUser) {
+    throw new Error('Usuário não autenticado.');
+  }
+
+  // If password is provided, reauthenticate first
+  if (password && currentUser.email) {
+    try {
+      const credential = EmailAuthProvider.credential(currentUser.email, password);
+      await reauthenticateWithCredential(currentUser, credential);
+    } catch (err: any) {
+      console.error('Reauth failed before deletion:', err);
+      if (err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
+        throw new Error('A senha informada está incorreta.');
+      }
+      throw new Error(err.message || 'Falha na reautenticação.');
+    }
+  }
+
+  // 1. Delete user doc from Firestore
+  try {
+    await deleteDoc(doc(db, 'users', uid));
+  } catch (err) {
+    console.warn('Could not delete user doc from Firestore:', err);
+  }
+
+  // 2. Delete username registry
+  if (username) {
+    try {
+      await deleteDoc(doc(db, 'usernames', username.toLowerCase().trim()));
+    } catch (err) {
+      console.warn('Could not delete username doc from Firestore:', err);
+    }
+  }
+
+  // 3. Delete user from Firebase Auth
+  try {
+    await deleteUser(currentUser);
+  } catch (err: any) {
+    console.error('Error deleting Auth user:', err);
+    if (err.code === 'auth/requires-recent-login') {
+      throw new Error('reauthenticate-required');
+    }
+    throw new Error(err.message || 'Erro ao deletar conta de autenticação.');
+  }
 }
 

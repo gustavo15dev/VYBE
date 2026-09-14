@@ -28,6 +28,7 @@ export interface UserProfile {
   verificado?: boolean;
   eh_admin?: boolean;
   conta_criador?: boolean;
+  onboarding_concluido?: boolean;
 }
 
 export interface VerificationRequestItem {

@@ -1447,7 +1447,7 @@ export async function fetchSuggestedUsers(
 }
 
 /**
- * Follows / Unfollows user
+ * Follows / Unfollows user. If target account is private, routes to follow request.
  */
 export async function toggleFollowUser(
   followerUid: string,
@@ -1461,6 +1461,22 @@ export async function toggleFollowUser(
   if (isFollowing) {
     await deleteDoc(followRef);
   } else {
+    // Verify if target user has a private account
+    try {
+      const targetUserDoc = await getDoc(doc(db, 'users', followingUid));
+      if (targetUserDoc.exists()) {
+        const targetData = targetUserDoc.data();
+        const isPrivate = Boolean(targetData.conta_privada || targetData.isPrivate);
+        if (isPrivate) {
+          // Send follow request instead of directly following
+          await createFollowRequest(followerUid, followingUid, followerProfile);
+          return;
+        }
+      }
+    } catch (err) {
+      console.warn('Could not verify target account privacy, proceeding with standard check:', err);
+    }
+
     await setDoc(followRef, {
       followerUid,
       followingUid,
@@ -2568,35 +2584,50 @@ export async function createReport(reportData: {
 }
 
 /**
- * Blocks a user. Automatically undoes follow relationships in BOTH directions.
+ * Blocks a user. Automatically undoes follow relationships in BOTH directions,
+ * and saves whether follow existed to restore automatically upon unblocking.
  */
 export async function blockUser(blockerUid: string, blockedUid: string): Promise<void> {
   if (!blockerUid || !blockedUid || blockerUid === blockedUid) return;
 
   const blockId = `${blockerUid}_${blockedUid}`;
   const blockRef = doc(db, 'bloqueios', blockId);
+
+  let blockerFollowedBlocked = false;
+  let blockedFollowedBlocker = false;
+
+  // Check and undo follow from blocker -> blocked
+  try {
+    const follow1Ref = doc(db, 'follows', `${blockerUid}_${blockedUid}`);
+    const snap1 = await getDoc(follow1Ref);
+    if (snap1.exists()) {
+      blockerFollowedBlocked = true;
+      await deleteDoc(follow1Ref);
+    }
+  } catch (e) {
+    // Ignore if didn't exist
+  }
+
+  // Check and undo follow from blocked -> blocker
+  try {
+    const follow2Ref = doc(db, 'follows', `${blockedUid}_${blockerUid}`);
+    const snap2 = await getDoc(follow2Ref);
+    if (snap2.exists()) {
+      blockedFollowedBlocker = true;
+      await deleteDoc(follow2Ref);
+    }
+  } catch (e) {
+    // Ignore if didn't exist
+  }
+
   await setDoc(blockRef, {
     id: blockId,
     usuario_bloqueador_id: blockerUid,
     usuario_bloqueado_id: blockedUid,
+    blockerFollowedBlocked,
+    blockedFollowedBlocker,
     criado_em: new Date().toISOString(),
   });
-
-  // Undo follow from blocker -> blocked
-  try {
-    const follow1Ref = doc(db, 'follows', `${blockerUid}_${blockedUid}`);
-    await deleteDoc(follow1Ref);
-  } catch (e) {
-    // Ignore if didn't exist
-  }
-
-  // Undo follow from blocked -> blocker
-  try {
-    const follow2Ref = doc(db, 'follows', `${blockedUid}_${blockerUid}`);
-    await deleteDoc(follow2Ref);
-  } catch (e) {
-    // Ignore if didn't exist
-  }
 
   // Also sync users/{blockerUid}.blockedUsers
   try {
@@ -2610,12 +2641,40 @@ export async function blockUser(blockerUid: string, blockedUid: string): Promise
 }
 
 /**
- * Unblocks a user. (Note: does NOT automatically re-follow).
+ * Unblocks a user and automatically restores mutual follow relationships if they existed before blocking.
  */
 export async function unblockUser(blockerUid: string, blockedUid: string): Promise<void> {
   if (!blockerUid || !blockedUid) return;
   const blockId = `${blockerUid}_${blockedUid}`;
-  await deleteDoc(doc(db, 'bloqueios', blockId));
+  const blockRef = doc(db, 'bloqueios', blockId);
+
+  try {
+    const blockSnap = await getDoc(blockRef);
+    if (blockSnap.exists()) {
+      const data = blockSnap.data() as BlockItem;
+      const now = new Date().toISOString();
+
+      if (data.blockerFollowedBlocked) {
+        await setDoc(doc(db, 'follows', `${blockerUid}_${blockedUid}`), {
+          followerUid: blockerUid,
+          followingUid: blockedUid,
+          createdAt: now,
+        });
+      }
+
+      if (data.blockedFollowedBlocker) {
+        await setDoc(doc(db, 'follows', `${blockedUid}_${blockerUid}`), {
+          followerUid: blockedUid,
+          followingUid: blockerUid,
+          createdAt: now,
+        });
+      }
+    }
+  } catch (e) {
+    console.warn('Could not restore previous follow states upon unblock:', e);
+  }
+
+  await deleteDoc(blockRef);
 
   // Also sync users/{blockerUid}.blockedUsers
   try {

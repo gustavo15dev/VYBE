@@ -315,7 +315,7 @@ export function FriendsView({
                         targetUsername={targetUser.username}
                         iFollow={true}
                         followsMe={followsMeBack}
-                        isPrivate={targetUser.conta_privada}
+                        isPrivate={Boolean(targetUser.conta_privada || targetUser.isPrivate)}
                         isRequested={myOutgoingRequests.has(targetUser.uid)}
                         onShowToast={onShowToast}
                       />
@@ -402,7 +402,7 @@ export function FriendsView({
                         targetUsername={targetUser.username}
                         iFollow={iFollow}
                         followsMe={true}
-                        isPrivate={targetUser.conta_privada}
+                        isPrivate={Boolean(targetUser.conta_privada || targetUser.isPrivate)}
                         isRequested={myOutgoingRequests.has(targetUser.uid)}
                         onShowToast={onShowToast}
                       />
@@ -488,7 +488,7 @@ export function FriendsView({
                         targetUsername={targetUser.username}
                         iFollow={false}
                         followsMe={followsMe}
-                        isPrivate={targetUser.conta_privada}
+                        isPrivate={Boolean(targetUser.conta_privada || targetUser.isPrivate)}
                         isRequested={myOutgoingRequests.has(targetUser.uid)}
                         onShowToast={onShowToast}
                       />

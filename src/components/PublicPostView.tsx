@@ -9,6 +9,7 @@ import {
   createComment,
   togglePostLike,
   formatEngagementCount,
+  subscribeOutgoingFollowRequests,
 } from '../services/socialService';
 import { FollowButton } from './FollowButton';
 import { VerifiedBadge } from './VerifiedBadge';
@@ -70,6 +71,16 @@ export function PublicPostView({
   const [newCommentText, setNewCommentText] = useState('');
   const [isSubmittingComment, setIsSubmittingComment] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
+  const [myOutgoingRequests, setMyOutgoingRequests] = useState<Set<string>>(new Set());
+
+  // Listen to outgoing follow requests
+  useEffect(() => {
+    if (!currentUid) return;
+    const unsub = subscribeOutgoingFollowRequests(currentUid, (reqs) => {
+      setMyOutgoingRequests(reqs);
+    });
+    return () => unsub();
+  }, [currentUid]);
 
   // Observer for view counts
   const postViewRef = usePostViewObserver({ postId, currentUid });
@@ -288,6 +299,8 @@ export function PublicPostView({
                 targetUsername={post.authorUsername}
                 iFollow={isFollowingAuthor}
                 followsMe={false}
+                isPrivate={Boolean(authorProfile?.conta_privada || authorProfile?.isPrivate || isAuthorPrivate)}
+                isRequested={myOutgoingRequests.has(post.authorUid)}
                 size="sm"
                 onShowToast={onShowToast}
               />
@@ -447,6 +460,8 @@ export function PublicPostView({
                   targetUsername={post.authorUsername}
                   iFollow={isFollowingAuthor}
                   followsMe={false}
+                  isPrivate={Boolean(authorProfile?.conta_privada || authorProfile?.isPrivate || isAuthorPrivate)}
+                  isRequested={myOutgoingRequests.has(post.authorUid)}
                   size="sm"
                   onShowToast={onShowToast}
                 />

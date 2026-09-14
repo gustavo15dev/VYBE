@@ -312,7 +312,7 @@ export function ProfileView({
                     targetUsername={profile.username}
                     iFollow={iFollow}
                     followsMe={followsMe}
-                    isPrivate={profile.conta_privada}
+                    isPrivate={Boolean(profile.conta_privada || profile.isPrivate)}
                     isRequested={myOutgoingRequests.has(targetUid)}
                     onShowToast={onShowToast}
                   />

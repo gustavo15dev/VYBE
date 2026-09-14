@@ -99,64 +99,41 @@ export function PostEditModal({
       const isVideo = file.type.startsWith('video/');
       const isImage = file.type.startsWith('image/');
 
-      if (!isImage && !isVideo) {
-        if (onShowToast) onShowToast('Por favor, selecione imagens ou vídeos válidos.', 'error');
+      if (isVideo) {
+        if (onShowToast) onShowToast('O envio de vídeos foi desativado. Por favor, envie apenas fotos.', 'info');
         continue;
       }
 
-      // Check max file sizes
-      if (isVideo && file.size > 15 * 1024 * 1024) {
-        if (onShowToast) onShowToast('Vídeo muito grande. Limite de 15MB.', 'error');
+      if (!isImage) {
+        if (onShowToast) onShowToast('Por favor, selecione imagens válidas.', 'error');
         continue;
       }
-      if (isImage && file.size > 20 * 1024 * 1024) {
+
+      if (file.size > 20 * 1024 * 1024) {
         if (onShowToast) onShowToast('Imagem muito grande. Limite de 20MB.', 'error');
         continue;
       }
 
       try {
-        if (isImage) {
-          const compressedUrl = await optimizeImage(file, {
-            maxWidth: 1200,
-            maxHeight: 1200,
-            quality: 0.78,
-            mimeType: 'image/jpeg',
-          });
+        const compressedUrl = await optimizeImage(file, {
+          maxWidth: 1200,
+          maxHeight: 1200,
+          quality: 0.78,
+          mimeType: 'image/jpeg',
+        });
 
-          setMediaList((prev) => [
-            ...prev,
-            {
-              id: `${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
-              url: compressedUrl,
-              type: 'image',
-              isExisting: false,
-            },
-          ]);
-        } else if (isVideo) {
-          const reader = new FileReader();
-          reader.onload = (event) => {
-            const rawUrl = event.target?.result as string;
-            const sizeBytes = getBase64SizeBytes(rawUrl);
-            if (sizeBytes > 850 * 1024) {
-              if (onShowToast) {
-                onShowToast('Vídeo muito longo ou pesado para o limite. Tente um mais curto.', 'error');
-              }
-              return;
-            }
-            setMediaList((prev) => [
-              ...prev,
-              {
-                id: `${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
-                url: rawUrl,
-                type: 'video',
-                isExisting: false,
-              },
-            ]);
-          };
-          reader.readAsDataURL(file);
-        }
+        setMediaList((prev) => [
+          ...prev,
+          {
+            id: `${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+            url: compressedUrl,
+            type: 'image',
+            isExisting: false,
+          },
+        ]);
       } catch (err) {
         console.error('Error optimizing uploaded file:', err);
+        if (onShowToast) onShowToast('Erro ao processar imagem.', 'error');
       }
     }
   };
@@ -222,7 +199,7 @@ export function PostEditModal({
         <input
           ref={fileInputRef}
           type="file"
-          accept="image/*,video/mp4,video/webm"
+          accept="image/*"
           multiple
           className="hidden"
           onChange={(e) => handleFilesAdded(e.target.files)}

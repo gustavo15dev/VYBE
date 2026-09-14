@@ -135,7 +135,7 @@ export function SuggestionsSidebar({ onShowToast, onSelectUser }: SuggestionsSid
                       targetUsername={item.username}
                       iFollow={isFollowing}
                       followsMe={followsMe}
-                      isPrivate={item.conta_privada}
+                      isPrivate={Boolean(item.conta_privada || item.isPrivate)}
                       isRequested={isRequested}
                       size="sm"
                       onShowToast={onShowToast}

@@ -2,16 +2,12 @@ import React, { useState, useRef, useEffect } from 'react';
 import {
   X,
   Image as ImageIcon,
-  Play,
   AlignLeft,
   Clock,
   UserPlus,
   ChevronRight,
   Plus,
   Loader2,
-  Volume2,
-  VolumeX,
-  Pause,
   MoreHorizontal,
   Search,
   Check,
@@ -20,7 +16,7 @@ import {
 import { UserProfile } from '../types/user';
 import { MediaType, PostCollaborator } from '../types/social';
 import { createPost } from '../services/socialService';
-import { optimizeImage, getBase64SizeBytes } from '../utils/mediaOptimizer';
+import { optimizeImage } from '../utils/mediaOptimizer';
 import { TextWithAutocomplete } from './TextWithAutocomplete';
 
 interface PostCreatorModalProps {
@@ -39,8 +35,7 @@ type Step = 'select_type' | 'compose';
 interface MediaFileItem {
   id: string;
   url: string;
-  type: 'image' | 'video';
-  duration?: number;
+  type: 'image';
 }
 
 export function PostCreatorModal({
@@ -54,16 +49,12 @@ export function PostCreatorModal({
   myFollowers,
 }: PostCreatorModalProps) {
   const [step, setStep] = useState<Step>('select_type');
-  const [selectedType, setSelectedType] = useState<'image' | 'video' | 'text' | 'story'>('image');
+  const [selectedType, setSelectedType] = useState<'image' | 'text' | 'story'>('image');
   
   // Composition form state
   const [caption, setCaption] = useState('');
   const [mediaList, setMediaList] = useState<MediaFileItem[]>([]);
   const [activeMediaIndex, setActiveMediaIndex] = useState(0);
-  
-  // Video playback state
-  const [isVideoPlaying, setIsVideoPlaying] = useState(true);
-  const [isVideoMuted, setIsVideoMuted] = useState(true);
   
   // Collaboration state
   const [isCollabOpen, setIsCollabOpen] = useState(false);
@@ -76,7 +67,6 @@ export function PostCreatorModal({
 
   // File input refs
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const activeVideoRef = useRef<HTMLVideoElement>(null);
 
   // Reset state when opening/closing modal
   useEffect(() => {
@@ -96,8 +86,8 @@ export function PostCreatorModal({
 
   if (!isOpen) return null;
 
-  // Handle selecting one of the 4 card options in Image 1
-  const handleSelectType = (type: 'image' | 'video' | 'text' | 'story') => {
+  // Handle selecting one of the card options in Image 1
+  const handleSelectType = (type: 'image' | 'text' | 'story') => {
     if (type === 'story') {
       onClose();
       if (onOpenStoryCreator) {
@@ -109,15 +99,15 @@ export function PostCreatorModal({
     setSelectedType(type);
     setStep('compose');
 
-    // If photo or video chosen, trigger file selector after a brief delay
-    if (type === 'image' || type === 'video') {
+    // If photo chosen, trigger file selector after a brief delay
+    if (type === 'image') {
       setTimeout(() => {
         fileInputRef.current?.click();
       }, 100);
     }
   };
 
-  // Process uploaded files (supports multiple images or video)
+  // Process uploaded files (supports multiple images)
   const handleFilesAdded = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
 
@@ -129,63 +119,41 @@ export function PostCreatorModal({
       const isVideo = file.type.startsWith('video/');
       const isImage = file.type.startsWith('image/');
 
-      if (!isImage && !isVideo) {
-        if (onShowToast) onShowToast('Por favor, selecione imagens ou vídeos válidos.', 'error');
+      if (isVideo) {
+        if (onShowToast) onShowToast('O envio de vídeos foi desativado. Por favor, envie apenas fotos.', 'info');
         continue;
       }
 
-      // Check max file sizes
-      if (isVideo && file.size > 15 * 1024 * 1024) {
-        if (onShowToast) onShowToast('Vídeo muito grande. Limite de 15MB.', 'error');
+      if (!isImage) {
+        if (onShowToast) onShowToast('Por favor, selecione fotos válidas.', 'error');
         continue;
       }
-      if (isImage && file.size > 20 * 1024 * 1024) {
+
+      if (file.size > 20 * 1024 * 1024) {
         if (onShowToast) onShowToast('Imagem muito grande. Limite de 20MB.', 'error');
         continue;
       }
 
       try {
-        if (isImage) {
-          // Dynamically compress and resize image
-          const compressedUrl = await optimizeImage(file, {
-            maxWidth: 1200,
-            maxHeight: 1200,
-            quality: 0.78,
-            mimeType: 'image/jpeg',
-          });
+        // Dynamically compress and resize image
+        const compressedUrl = await optimizeImage(file, {
+          maxWidth: 1200,
+          maxHeight: 1200,
+          quality: 0.78,
+          mimeType: 'image/jpeg',
+        });
 
-          setMediaList((prev) => [
-            ...prev,
-            {
-              id: `${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
-              url: compressedUrl,
-              type: 'image',
-            },
-          ]);
-        } else if (isVideo) {
-          const reader = new FileReader();
-          reader.onload = (event) => {
-            const rawUrl = event.target?.result as string;
-            const sizeBytes = getBase64SizeBytes(rawUrl);
-            if (sizeBytes > 850 * 1024) {
-              if (onShowToast) {
-                onShowToast('Vídeo muito longo ou pesado para o limite da publicação. Tente um vídeo mais curto.', 'error');
-              }
-              return;
-            }
-            setMediaList((prev) => [
-              ...prev,
-              {
-                id: `${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
-                url: rawUrl,
-                type: 'video',
-              },
-            ]);
-          };
-          reader.readAsDataURL(file);
-        }
+        setMediaList((prev) => [
+          ...prev,
+          {
+            id: `${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+            url: compressedUrl,
+            type: 'image',
+          },
+        ]);
       } catch (err) {
         console.error('Error optimizing uploaded file:', err);
+        if (onShowToast) onShowToast('Erro ao processar imagem.', 'error');
       }
     }
   };
@@ -199,25 +167,6 @@ export function PostCreatorModal({
       }
       return filtered;
     });
-  };
-
-  const toggleVideoPlayback = () => {
-    if (!activeVideoRef.current) return;
-    if (isVideoPlaying) {
-      activeVideoRef.current.pause();
-      setIsVideoPlaying(false);
-    } else {
-      activeVideoRef.current.play();
-      setIsVideoPlaying(true);
-    }
-  };
-
-  const toggleVideoMute = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (!activeVideoRef.current) return;
-    const nextMuted = !isVideoMuted;
-    activeVideoRef.current.muted = nextMuted;
-    setIsVideoMuted(nextMuted);
   };
 
   // Filtered list of registered users for collaborator search
@@ -300,13 +249,13 @@ export function PostCreatorModal({
       <input
         ref={fileInputRef}
         type="file"
-        multiple={selectedType === 'image'}
-        accept={selectedType === 'video' ? 'video/mp4,video/webm' : 'image/*'}
+        multiple={true}
+        accept="image/*"
         className="hidden"
         onChange={(e) => handleFilesAdded(e.target.files)}
       />
 
-      {/* STEP 1: MODAL "Criar publicação" (Card de Seleção Desktop - Imagem 1) */}
+      {/* STEP 1: MODAL "Criar publicação" */}
       {step === 'select_type' && (
         <div
           id="modal-post-type-selector"
@@ -325,7 +274,7 @@ export function PostCreatorModal({
             </button>
           </div>
 
-          {/* 4 Type Selection Cards */}
+          {/* Type Selection Cards: Foto, Texto, Story */}
           <div className="space-y-2.5 pt-1">
             {/* 1. Foto */}
             <button
@@ -345,25 +294,7 @@ export function PostCreatorModal({
               </div>
             </button>
 
-            {/* 2. Vídeo */}
-            <button
-              id="btn-select-type-video"
-              type="button"
-              onClick={() => handleSelectType('video')}
-              className="w-full flex items-center gap-4 p-3.5 rounded-2xl hover:bg-[#F3F8F8] transition-all cursor-pointer group text-left border border-transparent hover:border-[#548687]/20"
-            >
-              <div className="w-12 h-12 rounded-2xl bg-[#548687] text-white flex items-center justify-center shrink-0 shadow-xs group-hover:scale-105 transition-transform">
-                <Play className="w-6 h-6 fill-white stroke-[2] translate-x-0.5" />
-              </div>
-              <div>
-                <div className="text-sm font-semibold text-gray-900 group-hover:text-[#548687] transition-colors">
-                  Vídeo
-                </div>
-                <div className="text-xs text-gray-500">Vídeo curto</div>
-              </div>
-            </button>
-
-            {/* 3. Texto */}
+            {/* 2. Texto */}
             <button
               id="btn-select-type-text"
               type="button"
@@ -381,7 +312,7 @@ export function PostCreatorModal({
               </div>
             </button>
 
-            {/* 4. Story */}
+            {/* 3. Story */}
             <button
               id="btn-select-type-story"
               type="button"
@@ -402,7 +333,7 @@ export function PostCreatorModal({
         </div>
       )}
 
-      {/* STEP 2: COMPOSIÇÃO DE POST (Design Imagens 2 & 3) */}
+      {/* STEP 2: COMPOSIÇÃO DE POST */}
       {step === 'compose' && (
         <div
           id="modal-post-composition"
@@ -447,7 +378,7 @@ export function PostCreatorModal({
                         }}
                         className="w-full text-left px-3 py-2 rounded-xl hover:bg-rose-50 text-rose-600 font-medium transition-colors cursor-pointer"
                       >
-                        Limpar todas as fotos/vídeos
+                        Limpar todas as fotos
                       </button>
                     )}
                   </div>
@@ -468,24 +399,19 @@ export function PostCreatorModal({
 
           {/* Main Body */}
           <div className={selectedType === 'text' ? 'p-6' : 'grid grid-cols-1 md:grid-cols-2'}>
-            {/* LEFT COLUMN: Media Canvas & Carousel (Foto / Vídeo) */}
+            {/* LEFT COLUMN: Media Canvas & Carousel (Foto) */}
             {selectedType !== 'text' && (
               <div className="bg-[#111313] relative flex flex-col items-center justify-center min-h-[380px] md:min-h-[460px] select-none overflow-hidden group/canvas">
                 {mediaList.length === 0 ? (
-                  /* Empty state placeholder (Screenshot 3) */
                   <div
                     onClick={() => fileInputRef.current?.click()}
                     className="w-full h-full p-8 flex flex-col items-center justify-center text-center cursor-pointer hover:bg-white/5 transition-colors"
                   >
                     <div className="w-20 h-20 rounded-3xl bg-[#1A1F1F] text-[#426465] flex items-center justify-center mb-3">
-                      {selectedType === 'video' ? (
-                        <Play className="w-10 h-10 fill-current translate-x-0.5" />
-                      ) : (
-                        <ImageIcon className="w-10 h-10" />
-                      )}
+                      <ImageIcon className="w-10 h-10" />
                     </div>
                     <span className="text-xs text-gray-400 font-medium max-w-xs">
-                      Clique ou arraste {selectedType === 'video' ? 'um vídeo curto' : 'fotos'} aqui
+                      Clique ou arraste fotos aqui
                     </span>
                     <button
                       type="button"
@@ -497,35 +423,13 @@ export function PostCreatorModal({
                 ) : (
                   /* Active Media View */
                   <div className="w-full h-full flex items-center justify-center relative">
-                    {activeMedia?.type === 'video' ? (
-                      <div className="relative w-full h-full flex items-center justify-center bg-black">
-                        <video
-                          ref={activeVideoRef}
-                          src={activeMedia.url}
-                          autoPlay
-                          loop
-                          muted={isVideoMuted}
-                          playsInline
-                          onClick={toggleVideoPlayback}
-                          className="max-h-[460px] w-full object-contain cursor-pointer"
-                        />
-                        <button
-                          type="button"
-                          onClick={toggleVideoMute}
-                          className="absolute top-4 right-4 p-2 bg-black/60 hover:bg-black/80 text-white rounded-full transition-colors cursor-pointer"
-                        >
-                          {isVideoMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
-                        </button>
-                      </div>
-                    ) : (
-                      <img
-                        src={activeMedia?.url}
-                        alt="Preview"
-                        className="max-h-[460px] w-full object-contain"
-                      />
-                    )}
+                    <img
+                      src={activeMedia?.url}
+                      alt="Preview"
+                      className="max-h-[460px] w-full object-contain"
+                    />
 
-                    {/* Bottom Media Carousel & Thumbnails Overlay (Screenshots 2 & 3) */}
+                    {/* Bottom Media Carousel & Thumbnails Overlay */}
                     <div className="absolute bottom-4 left-4 right-4 flex items-center justify-between pointer-events-none">
                       {/* Left: Thumbnail list + Add Button */}
                       <div className="flex items-center gap-2 pointer-events-auto bg-black/60 backdrop-blur-md p-1.5 rounded-2xl max-w-[80%] overflow-x-auto scrollbar-none">
@@ -539,11 +443,7 @@ export function PostCreatorModal({
                                 isActive ? 'border-[#548687] ring-2 ring-[#548687]/50 scale-105' : 'border-transparent opacity-60 hover:opacity-100'
                               }`}
                             >
-                              {item.type === 'video' ? (
-                                <video src={item.url} className="w-full h-full object-cover" />
-                              ) : (
-                                <img src={item.url} alt="Thumb" className="w-full h-full object-cover" />
-                              )}
+                              <img src={item.url} alt="Thumb" className="w-full h-full object-cover" />
 
                               {/* Remove individual thumbnail */}
                               <button

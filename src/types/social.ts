@@ -256,6 +256,8 @@ export interface BlockItem {
   id: string;
   usuario_bloqueador_id: string;
   usuario_bloqueado_id: string;
+  blockerFollowedBlocked?: boolean;
+  blockedFollowedBlocker?: boolean;
   criado_em: string;
 }
 

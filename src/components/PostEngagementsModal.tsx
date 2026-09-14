@@ -6,6 +6,7 @@ import {
   getPostLikers,
   getPostViewers,
   formatEngagementCount,
+  subscribeOutgoingFollowRequests,
 } from '../services/socialService';
 import { FollowButton } from './FollowButton';
 
@@ -43,6 +44,16 @@ export function PostEngagementsModal({
   const [canViewViewersList, setCanViewViewersList] = useState(false);
   const [isLoadingLikers, setIsLoadingLikers] = useState(false);
   const [isLoadingViewers, setIsLoadingViewers] = useState(false);
+  const [myOutgoingRequests, setMyOutgoingRequests] = useState<Set<string>>(new Set());
+
+  // Listen to outgoing follow requests
+  useEffect(() => {
+    if (!currentUid) return;
+    const unsub = subscribeOutgoingFollowRequests(currentUid, (reqs) => {
+      setMyOutgoingRequests(reqs);
+    });
+    return () => unsub();
+  }, [currentUid]);
 
   // Sync initial tab when opened
   useEffect(() => {
@@ -287,6 +298,8 @@ export function PostEngagementsModal({
                             targetUsername={targetUser.username}
                             iFollow={iFollow}
                             followsMe={followsMe}
+                            isPrivate={Boolean(targetUser.conta_privada || targetUser.isPrivate)}
+                            isRequested={myOutgoingRequests.has(targetUser.uid)}
                             size="sm"
                             onShowToast={onShowToast}
                           />
@@ -402,6 +415,8 @@ export function PostEngagementsModal({
                             targetUsername={targetUser.username}
                             iFollow={iFollow}
                             followsMe={followsMe}
+                            isPrivate={Boolean(targetUser.conta_privada || targetUser.isPrivate)}
+                            isRequested={myOutgoingRequests.has(targetUser.uid)}
                             size="sm"
                             onShowToast={onShowToast}
                           />

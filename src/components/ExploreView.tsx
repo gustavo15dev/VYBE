@@ -388,7 +388,7 @@ export function ExploreView({
                       targetUsername={u.username}
                       iFollow={isFollowing}
                       followsMe={myFollowers.has(u.uid)}
-                      isPrivate={u.conta_privada}
+                      isPrivate={Boolean(u.conta_privada || u.isPrivate)}
                       isRequested={myOutgoingRequests.has(u.uid)} 
                       onShowToast={onShowToast}
                     />

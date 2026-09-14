@@ -7,17 +7,10 @@ import {
   Loader2,
   Sparkles,
   Upload,
-  Video,
-  Play,
-  Pause,
-  Volume2,
-  VolumeX,
-  Film,
 } from 'lucide-react';
 import { UserProfile } from '../types/user';
-import { MediaType } from '../types/social';
 import { createStory } from '../services/socialService';
-import { optimizeImage, getBase64SizeBytes } from '../utils/mediaOptimizer';
+import { optimizeImage } from '../utils/mediaOptimizer';
 
 interface StoryCreatorModalProps {
   author: UserProfile;
@@ -44,24 +37,29 @@ export function StoryCreatorModal({
   onStoryCreated,
   onShowToast,
 }: StoryCreatorModalProps) {
-  const [mode, setMode] = useState<MediaType>('text');
+  const [mode, setMode] = useState<'text' | 'image'>('text');
   const [caption, setCaption] = useState('');
   const [selectedBg, setSelectedBg] = useState(BG_PALETTES[0].color);
   const [mediaPreview, setMediaPreview] = useState<string | null>(null);
-  const [videoDuration, setVideoDuration] = useState<number | undefined>(undefined);
-  const [isVideoMuted, setIsVideoMuted] = useState(true);
-  const [isVideoPlaying, setIsVideoPlaying] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const imageInputRef = useRef<HTMLInputElement>(null);
-  const videoInputRef = useRef<HTMLInputElement>(null);
-  const videoPreviewRef = useRef<HTMLVideoElement>(null);
 
   if (!isOpen) return null;
 
   const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    if (file.type.startsWith('video/')) {
+      if (onShowToast) onShowToast('O envio de vídeos nos stories foi desativado. Por favor, envie uma foto.', 'info');
+      return;
+    }
+
+    if (!file.type.startsWith('image/')) {
+      if (onShowToast) onShowToast('Por favor, selecione uma imagem válida.', 'error');
+      return;
+    }
 
     if (file.size > 20 * 1024 * 1024) {
       if (onShowToast) onShowToast('A imagem deve ter no máximo 20MB.', 'error');
@@ -83,49 +81,6 @@ export function StoryCreatorModal({
     }
   };
 
-  const handleVideoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    if (file.size > 15 * 1024 * 1024) {
-      if (onShowToast) onShowToast('O vídeo deve ter no máximo 15MB (vídeo leve).', 'error');
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const rawUrl = event.target?.result as string;
-      const sizeBytes = getBase64SizeBytes(rawUrl);
-      if (sizeBytes > 850 * 1024) {
-        if (onShowToast) {
-          onShowToast('Vídeo muito longo para um story. Selecione um vídeo mais curto.', 'error');
-        }
-        return;
-      }
-      setMediaPreview(rawUrl);
-      setMode('video');
-    };
-    reader.readAsDataURL(file);
-  };
-
-  const handleLoadedVideoMetadata = () => {
-    if (videoPreviewRef.current) {
-      const dur = Math.round(videoPreviewRef.current.duration);
-      setVideoDuration(dur);
-    }
-  };
-
-  const toggleVideoPlayback = () => {
-    if (!videoPreviewRef.current) return;
-    if (isVideoPlaying) {
-      videoPreviewRef.current.pause();
-      setIsVideoPlaying(false);
-    } else {
-      videoPreviewRef.current.play();
-      setIsVideoPlaying(true);
-    }
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (mode === 'text' && !caption.trim()) {
@@ -133,8 +88,8 @@ export function StoryCreatorModal({
       return;
     }
 
-    if ((mode === 'image' || mode === 'video') && !mediaPreview) {
-      if (onShowToast) onShowToast('Selecione uma foto ou vídeo para o story.', 'error');
+    if (mode === 'image' && !mediaPreview) {
+      if (onShowToast) onShowToast('Selecione uma foto para o story.', 'error');
       return;
     }
 
@@ -144,9 +99,8 @@ export function StoryCreatorModal({
         author,
         caption: caption.trim(),
         mediaType: mode,
-        mediaUrl: mode !== 'text' ? (mediaPreview || undefined) : undefined,
+        mediaUrl: mode === 'image' ? (mediaPreview || undefined) : undefined,
         bgColor: selectedBg,
-        videoDuration: mode === 'video' ? videoDuration : undefined,
       });
 
       if (onShowToast) {
@@ -240,25 +194,6 @@ export function StoryCreatorModal({
                     alt="Preview"
                     className="w-full h-full object-contain pointer-events-none"
                   />
-                ) : mode === 'video' && mediaPreview ? (
-                  <div className="relative w-full h-full flex items-center justify-center">
-                    <video
-                      ref={videoPreviewRef}
-                      src={mediaPreview}
-                      autoPlay
-                      loop
-                      muted={isVideoMuted}
-                      onLoadedMetadata={handleLoadedVideoMetadata}
-                      className="w-full h-full object-contain"
-                    />
-                    <button
-                      type="button"
-                      onClick={toggleVideoPlayback}
-                      className="absolute bottom-2 right-2 p-1.5 rounded-full bg-black/60 text-white hover:bg-black/80 z-30"
-                    >
-                      {isVideoPlaying ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
-                    </button>
-                  </div>
                 ) : mode === 'text' && caption.trim() ? (
                   <div className="p-4 text-center">
                     <p className="text-white text-sm sm:text-base font-bold leading-snug drop-shadow-md break-words max-w-full">
@@ -267,17 +202,15 @@ export function StoryCreatorModal({
                   </div>
                 ) : (
                   <div className="text-white/40 text-xs italic px-3 text-center">
-                    {mode === 'video'
-                      ? 'Nenhum vídeo selecionado'
-                      : mode === 'image'
+                    {mode === 'image'
                       ? 'Nenhuma imagem selecionada'
                       : 'O texto digitado aparecerá aqui'}
                   </div>
                 )}
               </div>
 
-              {/* Caption Overlay in Image / Video mode */}
-              {mode !== 'text' && caption.trim() && (
+              {/* Caption Overlay in Image mode */}
+              {mode === 'image' && caption.trim() && (
                 <div className="relative z-20 p-2.5 bg-gradient-to-t from-black/80 to-transparent">
                   <p className="text-white text-[10px] line-clamp-2 bg-black/40 backdrop-blur-xs px-2 py-1 rounded-md">
                     {caption}
@@ -327,22 +260,6 @@ export function StoryCreatorModal({
                     <ImageIcon className="w-4 h-4 text-[#548687]" />
                     <span>Foto</span>
                   </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMode('video');
-                      if (!mediaPreview) videoInputRef.current?.click();
-                    }}
-                    className={`flex-1 py-2 text-xs font-semibold rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-                      mode === 'video'
-                        ? 'bg-white text-gray-900 shadow-xs'
-                        : 'text-gray-500 hover:text-gray-900'
-                    }`}
-                  >
-                    <Video className="w-4 h-4 text-[#548687]" />
-                    <span>Vídeo Leve</span>
-                  </button>
                 </div>
               </div>
 
@@ -365,7 +282,7 @@ export function StoryCreatorModal({
                     className="w-full bg-[#F9FBFC] border border-gray-200 rounded-2xl p-3 text-xs sm:text-sm text-gray-900 placeholder-gray-400 outline-none focus:border-[#548687] focus:bg-white resize-none transition-colors"
                   />
                 </div>
-              ) : mode === 'image' ? (
+              ) : (
                 <div className="space-y-3">
                   <label className="block text-xs font-bold text-gray-700">
                     Imagem do Story
@@ -431,85 +348,14 @@ export function StoryCreatorModal({
                     />
                   </div>
                 </div>
-              ) : (
-                <div className="space-y-3">
-                  <label className="block text-xs font-bold text-gray-700">
-                    Vídeo Leve do Story
-                  </label>
-
-                  {mediaPreview ? (
-                    <div className="flex items-center gap-3 bg-[#F8FAFA] p-2.5 rounded-xl border border-gray-200/80">
-                      <div className="w-12 h-12 rounded-lg bg-black flex items-center justify-center text-white">
-                        <Film className="w-6 h-6 text-[#548687]" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="text-xs font-medium text-gray-800 truncate">
-                          Vídeo leve selecionado
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => videoInputRef.current?.click()}
-                          className="text-[11px] text-[#548687] hover:underline font-semibold cursor-pointer"
-                        >
-                          Trocar vídeo
-                        </button>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setMediaPreview(null)}
-                        className="p-1.5 text-gray-400 hover:text-rose-500 rounded-lg hover:bg-rose-50 transition-colors cursor-pointer"
-                        title="Remover"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
-                    </div>
-                  ) : (
-                    <div
-                      onClick={() => videoInputRef.current?.click()}
-                      className="cursor-pointer flex items-center justify-center gap-3 p-4 border-2 border-dashed border-gray-200 hover:border-[#548687] rounded-2xl bg-[#F9FBFC] hover:bg-[#F0F6F6] transition-colors group text-center"
-                    >
-                      <div className="w-9 h-9 rounded-full bg-white shadow-2xs flex items-center justify-center text-[#548687] group-hover:scale-110 transition-transform">
-                        <Video className="w-4 h-4" />
-                      </div>
-                      <div className="text-left">
-                        <div className="text-xs font-semibold text-gray-800">
-                          Carregar vídeo leve do dispositivo
-                        </div>
-                        <div className="text-[10px] text-gray-400">
-                          MP4 ou WebM (até 25MB)
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1">
-                      Legenda (opcional)
-                    </label>
-                    <input
-                      type="text"
-                      value={caption}
-                      onChange={(e) => setCaption(e.target.value)}
-                      placeholder="Adicione uma legenda ao vídeo..."
-                      className="w-full px-3 py-2 bg-[#F9FBFC] border border-gray-200 rounded-xl text-xs focus:outline-none focus:border-[#548687] focus:bg-white"
-                    />
-                  </div>
-                </div>
               )}
 
-              {/* Hidden File Inputs */}
+              {/* Hidden File Input */}
               <input
                 ref={imageInputRef}
                 type="file"
                 accept="image/*"
                 onChange={handleImageChange}
-                className="hidden"
-              />
-              <input
-                ref={videoInputRef}
-                type="file"
-                accept="video/mp4,video/webm,video/ogg,video/quicktime"
-                onChange={handleVideoChange}
                 className="hidden"
               />
 

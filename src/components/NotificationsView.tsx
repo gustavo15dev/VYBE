@@ -363,7 +363,11 @@ export function NotificationsView({
             )}
 
             {group.tipo === 'mencao' && (
-              <span> mencionou você</span>
+              <span>
+                {group.comentario_id
+                  ? ' mencionou você em um comentário'
+                  : ' mencionou você em uma publicação'}
+              </span>
             )}
 
             {/* Time */}

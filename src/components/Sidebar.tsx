@@ -1,12 +1,21 @@
 import { Home, Compass, Users, MessageCircle, Bell, Plus, User } from 'lucide-react';
 
-export type AppView = 'home' | 'friends' | 'explore' | 'messages' | 'notifications' | 'profile';
+export type AppView =
+  | 'home'
+  | 'friends'
+  | 'explore'
+  | 'messages'
+  | 'notifications'
+  | 'profile'
+  | 'settings'
+  | 'hashtag';
 
 interface SidebarProps {
   currentView?: AppView;
   hasUnreadMessages?: boolean;
   hasUnreadNotifications?: boolean;
   unreadNotificationsCount?: number;
+  hasUnreadRequests?: boolean;
   onViewChange?: (view: AppView) => void;
   onInteractionAttempt?: (featureName: string) => void;
   onCreateClick?: () => void;
@@ -17,6 +26,7 @@ export function Sidebar({
   hasUnreadMessages = false,
   hasUnreadNotifications = false,
   unreadNotificationsCount = 0,
+  hasUnreadRequests = false,
   onViewChange,
   onInteractionAttempt,
   onCreateClick,
@@ -90,12 +100,24 @@ export function Sidebar({
                     <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-[#0F4C5C] ring-1.5 ring-white" />
                   </span>
                 )}
+                {item.view === 'friends' && hasUnreadRequests && (
+                  <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-500 opacity-80" />
+                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-500 ring-1.5 ring-white" />
+                  </span>
+                )}
               </div>
               <span className="flex-1">{item.name}</span>
               {item.view === 'messages' && hasUnreadMessages && (
                 <span className="relative flex h-2 w-2 ml-auto">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#548687] opacity-75" />
                   <span className="relative inline-flex rounded-full h-2 w-2 bg-[#45B6B0]" />
+                </span>
+              )}
+              {item.view === 'friends' && hasUnreadRequests && (
+                <span className="relative flex h-2 w-2 ml-auto">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-500 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500" />
                 </span>
               )}
               {item.view === 'notifications' && hasUnreadNotifications && unreadNotificationsCount > 0 && (

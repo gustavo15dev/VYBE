@@ -52,6 +52,26 @@ export interface VisualizacaoItem {
   criado_em: string;
 }
 
+export interface HashtagItem {
+  id: string;
+  nome: string; // único, sem o #, ex: "viagem"
+  contagem_posts: number;
+}
+
+export interface PostHashtagItem {
+  id: string;
+  post_id: string;
+  hashtag_id: string;
+}
+
+export interface MentionItem {
+  id: string;
+  post_id?: string | null;
+  comentario_id?: string | null;
+  usuario_mencionado_id: string;
+  criado_em: string;
+}
+
 export interface PostItem {
   id: string;
   authorUid: string;
@@ -59,6 +79,7 @@ export interface PostItem {
   authorDisplayName: string;
   authorPhotoURL?: string;
   content: string; // legenda
+  hashtags?: string[]; // array de nomes de hashtags sem #
   mediaType?: MediaType; // tipo: "image" | "video" | "text"
   mediaUrls?: string[]; // midias: []
   mediaUrl?: string;
@@ -150,7 +171,16 @@ export type NotificationType =
   | 'convite_colaboracao'
   | 'curtida_comentario'
   | 'solicitacao_mensagem'
+  | 'solicitacao_seguir'
   | 'mencao';
+
+export interface FollowRequestItem {
+  id: string;
+  solicitante_id: string;
+  usuario_alvo_id: string;
+  status: 'pendente' | 'aceita' | 'recusada';
+  criado_em: string;
+}
 
 export interface NotificationItem {
   id: string;
@@ -195,6 +225,34 @@ export interface AggregatedNotification {
     mediaType?: MediaType;
     content?: string;
   };
+}
+
+export type ReportTargetType = 'post' | 'comentario' | 'usuario' | 'story';
+
+export type ReportReason =
+  | 'nudez'
+  | 'discurso_odio'
+  | 'violencia'
+  | 'bullying'
+  | 'falso'
+  | 'spam'
+  | 'nao_gosto';
+
+export interface ReportItem {
+  id: string;
+  denunciante_id: string;
+  alvo_tipo: ReportTargetType;
+  alvo_id: string;
+  motivo: ReportReason;
+  status: 'pendente' | 'revisada' | 'arquivada';
+  criado_em: string;
+}
+
+export interface BlockItem {
+  id: string;
+  usuario_bloqueador_id: string;
+  usuario_bloqueado_id: string;
+  criado_em: string;
 }
 
 

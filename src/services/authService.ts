@@ -4,13 +4,19 @@ import {
   signInWithPopup,
   signOut as firebaseSignOut,
   updateProfile,
+  updatePassword,
+  EmailAuthProvider,
+  reauthenticateWithCredential,
   User
 } from 'firebase/auth';
 import {
   doc,
   getDoc,
   setDoc,
-  deleteDoc
+  updateDoc,
+  deleteDoc,
+  arrayUnion,
+  arrayRemove,
 } from 'firebase/firestore';
 import { auth, db, googleProvider } from '../lib/firebase';
 import { UserProfile } from '../types/user';
@@ -160,13 +166,7 @@ export async function logout(): Promise<void> {
 
 export async function updateUserProfile(
   uid: string,
-  updates: {
-    displayName?: string;
-    username?: string;
-    photoURL?: string;
-    bio?: string;
-    location?: string;
-  },
+  updates: Partial<UserProfile>,
   previousUsername?: string
 ): Promise<UserProfile> {
   const userRef = doc(db, 'users', uid);
@@ -227,5 +227,41 @@ export async function updateUserProfile(
   }
 
   return updatedProfile;
+}
+
+export async function changeUserPassword(currentPassword: string, newPassword: string): Promise<void> {
+  const currentUser = auth.currentUser;
+  if (!currentUser || !currentUser.email) {
+    throw new Error('Usuário não autenticado.');
+  }
+
+  try {
+    const credential = EmailAuthProvider.credential(currentUser.email, currentPassword);
+    await reauthenticateWithCredential(currentUser, credential);
+    await updatePassword(currentUser, newPassword);
+  } catch (err: any) {
+    console.error('Error changing password:', err);
+    if (err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
+      throw new Error('A senha atual informada está incorreta.');
+    }
+    if (err.code === 'auth/weak-password') {
+      throw new Error('A nova senha deve ter pelo menos 6 caracteres.');
+    }
+    throw new Error(err.message || 'Erro ao alterar a senha.');
+  }
+}
+
+export async function blockUser(currentUid: string, targetUid: string): Promise<void> {
+  const userRef = doc(db, 'users', currentUid);
+  await updateDoc(userRef, {
+    blockedUsers: arrayUnion(targetUid),
+  });
+}
+
+export async function unblockUser(currentUid: string, targetUid: string): Promise<void> {
+  const userRef = doc(db, 'users', currentUid);
+  await updateDoc(userRef, {
+    blockedUsers: arrayRemove(targetUid),
+  });
 }
 

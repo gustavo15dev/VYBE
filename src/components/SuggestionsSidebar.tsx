@@ -5,6 +5,7 @@ import {
   fetchSuggestedUsers,
   subscribeFollowing,
   subscribeFollowers,
+  subscribeOutgoingFollowRequests,
 } from '../services/socialService';
 import { Users, Loader2 } from 'lucide-react';
 import { FollowButton } from './FollowButton';
@@ -19,6 +20,7 @@ export function SuggestionsSidebar({ onShowToast, onSelectUser }: SuggestionsSid
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [followingSet, setFollowingSet] = useState<Set<string>>(new Set());
   const [followersSet, setFollowersSet] = useState<Set<string>>(new Set());
+  const [outgoingRequestsSet, setOutgoingRequestsSet] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -47,10 +49,15 @@ export function SuggestionsSidebar({ onShowToast, onSelectUser }: SuggestionsSid
       if (isMounted) setFollowersSet(set);
     });
 
+    const unsubOutgoing = subscribeOutgoingFollowRequests(user.uid, (set) => {
+      if (isMounted) setOutgoingRequestsSet(set);
+    });
+
     return () => {
       isMounted = false;
       unsubFollowing();
       unsubFollowers();
+      unsubOutgoing();
     };
   }, [user?.uid]);
 
@@ -84,6 +91,7 @@ export function SuggestionsSidebar({ onShowToast, onSelectUser }: SuggestionsSid
             {users.slice(0, 6).map((item) => {
               const isFollowing = followingSet.has(item.uid);
               const followsMe = followersSet.has(item.uid);
+              const isRequested = outgoingRequestsSet.has(item.uid);
               const initial =
                 item.displayName?.[0]?.toUpperCase() ||
                 item.username[0]?.toUpperCase() ||
@@ -127,6 +135,8 @@ export function SuggestionsSidebar({ onShowToast, onSelectUser }: SuggestionsSid
                       targetUsername={item.username}
                       iFollow={isFollowing}
                       followsMe={followsMe}
+                      isPrivate={item.conta_privada}
+                      isRequested={isRequested}
                       size="sm"
                       onShowToast={onShowToast}
                     />

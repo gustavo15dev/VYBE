@@ -7,8 +7,10 @@ import {
   Heart,
   Send,
   Trash2,
+  Flag,
+  UserX,
 } from 'lucide-react';
-import { UserStoriesGroup, StoryItem } from '../types/social';
+import { UserStoriesGroup, StoryItem, ReportTargetType } from '../types/social';
 import { markStoryAsViewed, toggleStoryLike, deleteStory } from '../services/socialService';
 
 interface StoryViewerProps {
@@ -17,6 +19,8 @@ interface StoryViewerProps {
   currentUid: string;
   onClose: () => void;
   onShowToast?: (msg: string, type?: 'info' | 'success' | 'error') => void;
+  onOpenReport?: (type: ReportTargetType, id: string) => void;
+  onOpenBlock?: (targetUid: string, targetUsername: string) => void;
 }
 
 const DEFAULT_STORY_DURATION_MS = 6000; // 6 seconds for static image/text
@@ -27,6 +31,8 @@ export function StoryViewer({
   currentUid,
   onClose,
   onShowToast,
+  onOpenReport,
+  onOpenBlock,
 }: StoryViewerProps) {
   const [groupIndex, setGroupIndex] = useState(initialGroupIndex);
   const [storyIndex, setStoryIndex] = useState(0);
@@ -291,19 +297,55 @@ export function StoryViewer({
               </button>
 
               {showOptions && (
-                <div className="absolute right-0 mt-2 w-44 bg-[#1F3331] text-white rounded-xl shadow-xl border border-white/10 p-1.5 z-40 text-xs animate-in fade-in">
-                  {isMyStory && (
+                <div className="absolute right-0 mt-2 w-48 bg-[#1F3331] text-white rounded-2xl shadow-2xl border border-white/10 p-1.5 z-40 text-xs animate-in fade-in">
+                  {isMyStory ? (
                     <button
+                      type="button"
                       onClick={handleDeleteThisStory}
-                      className="w-full flex items-center gap-2 px-3 py-2 text-rose-300 hover:bg-rose-500/20 rounded-lg text-left cursor-pointer"
+                      className="w-full flex items-center gap-2 px-3 py-2.5 text-rose-300 hover:bg-rose-500/20 rounded-xl text-left cursor-pointer transition-colors"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                       <span>Excluir este story</span>
                     </button>
+                  ) : (
+                    <>
+                      {activeStory && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowOptions(false);
+                            setIsPaused(true);
+                            onOpenReport?.('story', activeStory.id);
+                          }}
+                          className="w-full flex items-center gap-2 px-3 py-2.5 text-amber-300 hover:bg-amber-500/20 rounded-xl text-left cursor-pointer transition-colors"
+                        >
+                          <Flag className="w-3.5 h-3.5" />
+                          <span>Denunciar story</span>
+                        </button>
+                      )}
+
+                      {activeStory && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowOptions(false);
+                            setIsPaused(true);
+                            onOpenBlock?.(activeStory.authorUid, activeStory.authorUsername);
+                          }}
+                          className="w-full flex items-center gap-2 px-3 py-2.5 text-rose-400 hover:bg-rose-500/20 rounded-xl text-left cursor-pointer transition-colors"
+                        >
+                          <UserX className="w-3.5 h-3.5" />
+                          <span>Bloquear @{activeStory.authorUsername}</span>
+                        </button>
+                      )}
+                    </>
                   )}
-                  <div className="px-3 py-2 text-white/60 text-[11px]">
-                    Visualizações: {activeStory.viewers.length}
-                  </div>
+
+                  {activeStory && (
+                    <div className="px-3 py-1.5 text-white/50 text-[10px] border-t border-white/10 mt-1">
+                      Visualizações: {activeStory.viewers.length}
+                    </div>
+                  )}
                 </div>
               )}
             </div>

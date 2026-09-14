@@ -8,9 +8,13 @@ import {
   Trash2,
   CornerDownRight,
   MessageSquare,
+  Flag,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { PostItem, CommentItem } from '../types/social';
+import { UserProfile } from '../types/user';
+import { FormattedText } from './FormattedText';
+import { TextWithAutocomplete } from './TextWithAutocomplete';
 import {
   subscribeComments,
   createComment,
@@ -21,14 +25,21 @@ import {
 } from '../services/socialService';
 import { usePostViewObserver } from '../hooks/usePostViewObserver';
 
+import { ReportTargetType } from '../types/social';
+
 interface PostCommentsPanelProps {
   post: PostItem;
   onClose: () => void;
   onSelectUser?: (uid: string) => void;
+  onSelectHashtag?: (tag: string) => void;
   onShowToast?: (msg: string, type?: 'info' | 'success' | 'error') => void;
   isSidebar?: boolean;
   isModal?: boolean;
   onOpenEngagements?: (post: PostItem, tab: 'curtidas' | 'visualizacoes') => void;
+  onOpenReport?: (type: ReportTargetType, id: string) => void;
+  onOpenBlock?: (targetUid: string, targetUsername: string) => void;
+  allUsers?: UserProfile[];
+  myFollowing?: Set<string>;
 }
 
 // Quick emoji selection
@@ -38,10 +49,15 @@ export function PostCommentsPanel({
   post,
   onClose,
   onSelectUser,
+  onSelectHashtag,
   onShowToast,
   isSidebar = true,
   isModal = false,
   onOpenEngagements,
+  onOpenReport,
+  onOpenBlock,
+  allUsers = [],
+  myFollowing = new Set(),
 }: PostCommentsPanelProps) {
   const { user, profile } = useAuth();
   const [comments, setComments] = useState<CommentItem[]>([]);
@@ -181,6 +197,7 @@ export function PostCommentsPanel({
         texto: trimmed,
         comentario_pai_id: replyingTo ? replyingTo.rootCommentId : null,
         resposta_para_username: replyingTo ? replyingTo.username : undefined,
+        allUsers,
       });
 
       setCommentText('');
@@ -265,7 +282,12 @@ export function PostCommentsPanel({
               {post.authorUsername}
             </span>
             <span className="text-gray-700 whitespace-pre-line break-words text-[13px]">
-              {post.content || 'Publicação'}
+              <FormattedText
+                text={post.content || ''}
+                onSelectUser={onSelectUser}
+                onSelectHashtag={onSelectHashtag}
+                allUsers={allUsers}
+              />
             </span>
           </div>
         </div>
@@ -344,7 +366,12 @@ export function PostCommentsPanel({
                           {root.autor_username}
                         </span>
                         <span className="text-gray-800 break-words whitespace-pre-line">
-                          {root.texto}
+                          <FormattedText
+                            text={root.texto}
+                            onSelectUser={onSelectUser}
+                            onSelectHashtag={onSelectHashtag}
+                            allUsers={allUsers}
+                          />
                         </span>
                       </div>
 
@@ -363,11 +390,21 @@ export function PostCommentsPanel({
                         >
                           Responder
                         </button>
+                        {user?.uid !== root.autor_id && (
+                          <button
+                            type="button"
+                            onClick={() => onOpenReport?.('comentario', root.id)}
+                            className="opacity-0 group-hover/root:opacity-100 text-gray-300 hover:text-amber-600 transition-opacity cursor-pointer"
+                            title="Denunciar comentário"
+                          >
+                            <Flag className="w-3 h-3" />
+                          </button>
+                        )}
                         {user?.uid === root.autor_id && (
                           <button
                             type="button"
                             onClick={() => handleDeleteComment(root.id)}
-                            className="opacity-0 group-hover/root:opacity-100 text-gray-300 hover:text-red-500 transition-opacity"
+                            className="opacity-0 group-hover/root:opacity-100 text-gray-300 hover:text-red-500 transition-opacity cursor-pointer"
                             title="Excluir comentário"
                           >
                             <Trash2 className="w-3 h-3" />
@@ -441,7 +478,12 @@ export function PostCommentsPanel({
                                   </span>
                                 )}
                                 <span className="text-gray-800 break-words whitespace-pre-line">
-                                  {reply.texto}
+                                  <FormattedText
+                                    text={reply.texto}
+                                    onSelectUser={onSelectUser}
+                                    onSelectHashtag={onSelectHashtag}
+                                    allUsers={allUsers}
+                                  />
                                 </span>
                               </div>
 
@@ -631,13 +673,14 @@ export function PostCommentsPanel({
           <Smile className="w-5 h-5" />
         </button>
 
-        {/* Input */}
-        <input
-          ref={inputRef}
-          type="text"
+        {/* Input with Autocomplete for # and @ */}
+        <TextWithAutocomplete
           value={commentText}
-          onChange={(e) => setCommentText(e.target.value)}
+          onChange={setCommentText}
           placeholder={replyingTo ? `Respondendo a @${replyingTo.username}...` : 'Adicione um comentário...'}
+          isTextarea={false}
+          allUsers={allUsers}
+          myFollowing={myFollowing}
           className="flex-1 bg-transparent text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none"
         />
 

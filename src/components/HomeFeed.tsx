@@ -19,8 +19,13 @@ import {
   ChevronRight,
   Users,
   Send,
+  MoreHorizontal,
+  Flag,
+  UserX,
 } from 'lucide-react';
-import { UserStoriesGroup, PostItem } from '../types/social';
+import { UserStoriesGroup, PostItem, ReportTargetType } from '../types/social';
+import { UserProfile } from '../types/user';
+import { FormattedText } from './FormattedText';
 import {
   subscribeActiveStories,
   subscribePosts,
@@ -34,28 +39,38 @@ import { usePostViewObserver } from '../hooks/usePostViewObserver';
 
 interface HomeFeedProps {
   myFollowing: Set<string>;
+  allBlockedUids?: Set<string>;
   onOpenStoryViewer: (groups: UserStoriesGroup[], startIndex: number) => void;
   onOpenStoryCreator: () => void;
   onOpenPostCreator: () => void;
   onShowToast?: (msg: string, type?: 'info' | 'success' | 'error') => void;
   onSelectUser?: (uid: string) => void;
+  onSelectHashtag?: (tag: string) => void;
   onNavigateFriends?: () => void;
   onOpenComments?: (post: PostItem) => void;
   onSharePost?: (post: PostItem) => void;
   onOpenEngagements?: (post: PostItem, tab: 'curtidas' | 'visualizacoes') => void;
+  onOpenReport?: (type: ReportTargetType, id: string) => void;
+  onOpenBlock?: (targetUid: string, targetUsername: string) => void;
+  allUsers?: UserProfile[];
 }
 
 export function HomeFeed({
   myFollowing,
+  allBlockedUids = new Set(),
   onOpenStoryViewer,
   onOpenStoryCreator,
   onOpenPostCreator,
   onShowToast,
   onSelectUser,
+  onSelectHashtag,
   onNavigateFriends,
   onOpenComments,
   onSharePost,
   onOpenEngagements,
+  onOpenReport,
+  onOpenBlock,
+  allUsers = [],
 }: HomeFeedProps) {
   const { user, profile } = useAuth();
   const [otherGroups, setOtherGroups] = useState<UserStoriesGroup[]>([]);
@@ -63,8 +78,26 @@ export function HomeFeed({
   const [posts, setPosts] = useState<PostItem[]>([]);
   const [loadingPosts, setLoadingPosts] = useState(true);
   const [expandedCollabsPostId, setExpandedCollabsPostId] = useState<string | null>(null);
+  const [activePostMenuId, setActivePostMenuId] = useState<string | null>(null);
 
-  // Subscribe to real-time stories (< 24h) strictly filtered by followed accounts!
+  // Filter out posts and stories from blocked users or auto-hidden posts
+  const visibleOtherGroups = otherGroups.filter(
+    (g) => !allBlockedUids.has(g.authorUid)
+  );
+
+  const visiblePosts = posts.filter((p) => {
+    if (allBlockedUids.has(p.authorUid) || (p as any).auto_hidden) {
+      return false;
+    }
+    if (p.authorUid === user?.uid) {
+      return true;
+    }
+    const author = allUsers?.find((u) => u.uid === p.authorUid);
+    if (author?.conta_privada) {
+      return myFollowing.has(p.authorUid);
+    }
+    return true;
+  });
   useEffect(() => {
     if (!user?.uid) return;
 
@@ -240,7 +273,7 @@ export function HomeFeed({
         </div>
 
         {/* Stories from Followed Users ONLY */}
-        {otherGroups.map((group, index) => {
+        {visibleOtherGroups.map((group, index) => {
           const userInit =
             group.authorDisplayName?.[0]?.toUpperCase() ||
             group.authorUsername[0]?.toUpperCase() ||
@@ -347,7 +380,7 @@ export function HomeFeed({
           </div>
         ) : (
           /* Real Posts List (Multimedia) */
-          posts.map((post) => {
+          visiblePosts.map((post) => {
             const isLiked = user?.uid ? post.likes.includes(user.uid) : false;
             const authorInitial =
               post.authorDisplayName?.[0]?.toUpperCase() ||
@@ -584,6 +617,50 @@ export function HomeFeed({
                         Convite com @{pendingCollabs[0].usuario_username} pendente
                       </span>
                     )}
+
+                    {/* Three Dots Post Menu */}
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setActivePostMenuId(activePostMenuId === post.id ? null : post.id)
+                        }
+                        className="p-1 text-gray-400 hover:text-gray-700 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
+                        title="Opções da publicação"
+                      >
+                        <MoreHorizontal className="w-4 h-4" />
+                      </button>
+
+                      {activePostMenuId === post.id && (
+                        <div className="absolute right-0 top-full mt-1 w-48 bg-white border border-gray-100 rounded-2xl shadow-xl z-50 py-1 animate-in fade-in zoom-in-95">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setActivePostMenuId(null);
+                              onOpenReport?.('post', post.id);
+                            }}
+                            className="w-full px-4 py-2.5 text-left text-xs font-semibold text-gray-700 hover:bg-gray-50 flex items-center gap-2 transition-colors cursor-pointer"
+                          >
+                            <Flag className="w-4 h-4 text-amber-600 shrink-0" />
+                            <span>Denunciar publicação</span>
+                          </button>
+
+                          {user?.uid !== post.authorUid && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setActivePostMenuId(null);
+                                onOpenBlock?.(post.authorUid, post.authorUsername);
+                              }}
+                              className="w-full px-4 py-2.5 text-left text-xs font-semibold text-rose-600 hover:bg-rose-50 flex items-center gap-2 transition-colors cursor-pointer"
+                            >
+                              <UserX className="w-4 h-4 text-rose-600 shrink-0" />
+                              <span>Bloquear @{post.authorUsername}</span>
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
 
@@ -595,7 +672,12 @@ export function HomeFeed({
                 {/* Post Text Content */}
                 {post.content && (
                   <div className={`px-4 ${midias.length > 0 ? 'pt-3 pb-3' : 'pb-3'} text-sm text-gray-800 leading-relaxed whitespace-pre-line`}>
-                    {post.content}
+                    <FormattedText
+                      text={post.content}
+                      onSelectUser={onSelectUser}
+                      onSelectHashtag={onSelectHashtag}
+                      allUsers={allUsers}
+                    />
                   </div>
                 )}
 

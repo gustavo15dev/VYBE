@@ -6,6 +6,8 @@ import {
   Check,
   Users,
   Loader2,
+  Copy,
+  Link2,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { PostItem, ConversationItem, PostPreviewData } from '../types/social';
@@ -169,8 +171,29 @@ export function SharePostModal({
           </button>
         </div>
 
-        {/* Search Input */}
-        <div className="p-3 border-b border-gray-100 bg-[#FAFBFB]">
+        {/* Search Input & Copy Link Row */}
+        <div className="p-3 border-b border-gray-100 bg-[#FAFBFB] space-y-2.5">
+          <button
+            type="button"
+            onClick={() => {
+              const url = `${window.location.origin}/p/${post.id}`;
+              navigator.clipboard.writeText(url);
+              if (onShowToast) onShowToast('Link público do post copiado!', 'success');
+            }}
+            className="w-full flex items-center justify-between p-2.5 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors cursor-pointer text-xs font-semibold text-gray-700 shadow-2xs"
+          >
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-lg bg-[#EAF2F2] text-[#548687] flex items-center justify-center">
+                <Link2 className="w-4 h-4" />
+              </div>
+              <span>Copiar link da publicação</span>
+            </div>
+            <div className="flex items-center gap-1 text-[#548687]">
+              <Copy className="w-3.5 h-3.5" />
+              <span>Copiar</span>
+            </div>
+          </button>
+
           <div className="relative">
             <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
             <input

@@ -22,11 +22,13 @@ import {
   fetchSuggestedUsersForExplore,
   toggleFollowUser,
 } from '../services/socialService';
+import { FollowButton } from './FollowButton';
 
 interface ExploreViewProps {
   allUsers: UserProfile[];
   myFollowing: Set<string>;
   myFollowers: Set<string>;
+  myOutgoingRequests?: Set<string>;
   allFollows?: { followerUid: string; followingUid: string }[];
   onOpenPostDetail?: (post: PostItem) => void;
   onSelectUser?: (uid: string) => void;
@@ -48,6 +50,7 @@ export function ExploreView({
   allUsers,
   myFollowing,
   myFollowers,
+  myOutgoingRequests = new Set(),
   allFollows = [],
   onOpenPostDetail,
   onSelectUser,
@@ -82,7 +85,12 @@ export function ExploreView({
           fetchSuggestedUsersForExplore(user.uid, myFollowing, allUsers, allFollows),
         ]);
 
-        setPosts(fetchedPosts);
+        const publicPostsOnly = fetchedPosts.filter((p) => {
+          const author = allUsers.find((u) => u.uid === p.authorUid);
+          return !author?.conta_privada;
+        });
+
+        setPosts(publicPostsOnly);
         setSuggestedUsers(fetchedUsers);
       } catch (err) {
         console.error('Error loading explore data:', err);
@@ -371,24 +379,18 @@ export function ExploreView({
                   )}
 
                   {/* Follow Button */}
-                  <button
-                    type="button"
-                    disabled={followLoadingUid === u.uid}
-                    onClick={(e) => handleFollowClick(e, u.uid)}
-                    className={`mt-2.5 w-full max-w-[110px] py-1.5 px-3 rounded-xl font-semibold text-xs transition-all cursor-pointer shadow-2xs ${
-                      isFollowing
-                        ? 'bg-gray-100 text-gray-700 hover:bg-gray-200 border border-gray-200'
-                        : 'bg-[#548687] hover:bg-[#457273] text-white hover:shadow-xs'
-                    }`}
-                  >
-                    {followLoadingUid === u.uid ? (
-                      <Loader2 className="w-3.5 h-3.5 animate-spin mx-auto" />
-                    ) : isFollowing ? (
-                      'Seguindo'
-                    ) : (
-                      'Seguir'
-                    )}
-                  </button>
+                  <div className="mt-2.5 w-full flex justify-center">
+                    <FollowButton
+                      currentUid={user!.uid}
+                      targetUid={u.uid}
+                      targetUsername={u.username}
+                      iFollow={isFollowing}
+                      followsMe={myFollowers.has(u.uid)}
+                      isPrivate={u.conta_privada}
+                      isRequested={myOutgoingRequests.has(u.uid)} 
+                      onShowToast={onShowToast}
+                    />
+                  </div>
                 </div>
               );
             }

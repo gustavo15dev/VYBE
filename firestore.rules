@@ -78,5 +78,24 @@ service cloud.firestore {
       allow create: if request.auth != null;
       allow update, delete: if request.auth != null;
     }
+
+    // Denuncias
+    match /denuncias/{denunciaId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null && request.resource.data.denunciante_id == request.auth.uid;
+      allow update, delete: if request.auth != null;
+    }
+
+    // Bloqueios
+    match /bloqueios/{bloqueioId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null && request.resource.data.usuario_bloqueador_id == request.auth.uid;
+      allow delete: if request.auth != null && resource.data.usuario_bloqueador_id == request.auth.uid;
+    }
+
+    // Solicitações de seguir (contas privadas)
+    match /solicitacoes_seguir/{reqId} {
+      allow read, write: if request.auth != null;
+    }
   }
 }

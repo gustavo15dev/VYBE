@@ -21,6 +21,7 @@ import {
   Loader2,
   Sparkles,
   ShieldCheck,
+  X,
 } from 'lucide-react';
 
 const COUNTRIES = [
@@ -46,11 +47,21 @@ const COUNTRIES = [
 interface AuthModalProps {
   onSuccess?: () => void;
   showToast?: (message: string, type?: 'info' | 'success' | 'error') => void;
+  isModal?: boolean;
+  onClose?: () => void;
+  initialTab?: 'login' | 'register';
+  paywallMessage?: string;
 }
 
-export function AuthModal({ showToast }: AuthModalProps) {
+export function AuthModal({
+  showToast,
+  isModal = false,
+  onClose,
+  initialTab = 'login',
+  paywallMessage,
+}: AuthModalProps) {
   const { needsProfileCompletion, pendingGoogleUser, refreshProfile } = useAuth();
-  const [tab, setTab] = useState<'login' | 'register'>('login');
+  const [tab, setTab] = useState<'login' | 'register'>(initialTab);
 
   // Login form state
   const [loginIdentifier, setLoginIdentifier] = useState('');
@@ -257,33 +268,54 @@ export function AuthModal({ showToast }: AuthModalProps) {
     }
   };
 
-  return (
-    <div className="min-h-screen bg-[#F7FAFA] flex flex-col justify-center items-center p-4 sm:p-6">
-      <div className="w-full max-w-md bg-white rounded-3xl border border-[#E2ECEC] shadow-lg shadow-black/5 p-6 sm:p-8 relative overflow-hidden">
-        {/* Decorative subtle background tint */}
-        <div className="absolute -top-24 -right-24 w-48 h-48 bg-[#E1EEEE] rounded-full blur-2xl opacity-60 pointer-events-none" />
+  const cardContent = (
+    <div className="w-full max-w-md bg-white rounded-3xl border border-[#E2ECEC] shadow-xl shadow-black/10 p-6 sm:p-8 relative overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+      {/* Close button if rendered inside a modal */}
+      {isModal && onClose && (
+        <button
+          type="button"
+          onClick={onClose}
+          className="absolute top-4 right-4 p-2 text-gray-400 hover:text-gray-700 rounded-full hover:bg-gray-100 transition-colors z-20 cursor-pointer"
+          title="Fechar"
+        >
+          <X className="w-5 h-5" />
+        </button>
+      )}
 
-        {/* Logo */}
-        <div className="flex flex-col items-center mb-6 relative">
-          <img
-            src="/logo.png"
-            alt="VYBE Logo"
-            className="h-10 sm:h-12 w-auto object-contain mb-2"
-          />
-          <p className="text-xs sm:text-sm text-gray-500 font-medium text-center">
-            A sua nova rede social moderna, autêntica e sem filtros
-          </p>
-        </div>
+      {/* Decorative subtle background tint */}
+      <div className="absolute -top-24 -right-24 w-48 h-48 bg-[#E1EEEE] rounded-full blur-2xl opacity-60 pointer-events-none" />
 
-        {errorMessage && (
-          <div
-            id="auth-error-alert"
-            className="mb-5 p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs sm:text-sm flex items-start gap-2.5"
-          >
-            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-600" />
-            <div className="flex-1 leading-relaxed">{errorMessage}</div>
+      {/* Logo */}
+      <div className="flex flex-col items-center mb-6 relative">
+        <img
+          src="/logo.png"
+          alt="VYBE Logo"
+          className="h-10 sm:h-12 w-auto object-contain mb-2"
+        />
+        <p className="text-xs sm:text-sm text-gray-500 font-medium text-center">
+          A sua nova rede social moderna, autêntica e sem filtros
+        </p>
+      </div>
+
+      {/* Soft Paywall Banner Message */}
+      {paywallMessage && (
+        <div className="mb-5 p-3.5 rounded-2xl bg-[#EAF3F3] border border-[#548687]/30 text-[#2C5253] text-xs sm:text-sm flex items-start gap-2.5">
+          <Sparkles className="w-4 h-4 text-[#548687] shrink-0 mt-0.5" />
+          <div className="flex-1 font-medium leading-relaxed">
+            Entre ou crie sua conta para {paywallMessage}.
           </div>
-        )}
+        </div>
+      )}
+
+      {errorMessage && (
+        <div
+          id="auth-error-alert"
+          className="mb-5 p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs sm:text-sm flex items-start gap-2.5"
+        >
+          <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-600" />
+          <div className="flex-1 leading-relaxed">{errorMessage}</div>
+        </div>
+      )}
 
         {/* View: Needs Google Profile Completion (First-time onboarding) */}
         {needsProfileCompletion ? (
@@ -709,6 +741,22 @@ export function AuthModal({ showToast }: AuthModalProps) {
           <span>Banco de dados Firestore ativo & sincronizado em tempo real</span>
         </div>
       </div>
+    );
+
+  if (isModal) {
+    return (
+      <div
+        className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto"
+        onClick={onClose}
+      >
+        <div onClick={(e) => e.stopPropagation()}>{cardContent}</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-[#F7FAFA] flex flex-col justify-center items-center p-4 sm:p-6">
+      {cardContent}
     </div>
   );
 }

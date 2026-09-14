@@ -30,8 +30,16 @@ import {
   NotificationItem,
   NotificationType,
   AggregatedNotification,
+  HashtagItem,
+  MentionItem,
+  ReportItem,
+  BlockItem,
+  ReportTargetType,
+  ReportReason,
+  FollowRequestItem,
 } from '../types/social';
 import { UserProfile } from '../types/user';
+import { extractHashtags, extractMentions } from '../utils/hashtagMention';
 
 const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
 
@@ -306,6 +314,259 @@ export async function getPostById(postId: string): Promise<PostItem | null> {
 }
 
 /**
+ * Processes hashtags and mentions for a newly created post
+ */
+export async function processPostHashtagsAndMentions(
+  postId: string,
+  content: string,
+  author: UserProfile,
+  allUsers: UserProfile[] = []
+): Promise<void> {
+  if (!content) return;
+  const hashtags = extractHashtags(content);
+  const mentions = extractMentions(content);
+
+  // 1. Update post document with extracted hashtags
+  if (hashtags.length > 0) {
+    try {
+      const postRef = doc(db, 'posts', postId);
+      await updateDoc(postRef, { hashtags });
+    } catch (err) {
+      console.warn('Error updating post hashtags:', err);
+    }
+
+    // 2. Increment contagem_posts on hashtags collection & create post_hashtag links
+    for (const tag of hashtags) {
+      try {
+        const tagRef = doc(db, 'hashtags', tag);
+        await setDoc(
+          tagRef,
+          {
+            id: tag,
+            nome: tag,
+            contagem_posts: increment(1),
+          },
+          { merge: true }
+        );
+
+        const postTagRef = doc(db, 'post_hashtag', `${postId}_${tag}`);
+        await setDoc(postTagRef, {
+          id: `${postId}_${tag}`,
+          post_id: postId,
+          hashtag_id: tag,
+        });
+      } catch (err) {
+        console.warn(`Error updating hashtag #${tag}:`, err);
+      }
+    }
+  }
+
+  // 3. Process mentions and generate notifications
+  if (mentions.length > 0) {
+    for (const username of mentions) {
+      const targetUser = allUsers.find(
+        (u) => u.username.toLowerCase().replace(/^@/, '') === username
+      );
+
+      if (targetUser && targetUser.uid !== author.uid) {
+        try {
+          const mentionRef = doc(collection(db, 'mencao'));
+          await setDoc(mentionRef, {
+            id: mentionRef.id,
+            post_id: postId,
+            usuario_mencionado_id: targetUser.uid,
+            criado_em: new Date().toISOString(),
+          });
+
+          await createNotification({
+            usuario_destinatario_id: targetUser.uid,
+            usuario_origem_id: author.uid,
+            usuario_origem_username: author.username,
+            usuario_origem_displayName: author.displayName || author.username,
+            usuario_origem_photoURL: author.photoURL || '',
+            tipo: 'mencao',
+            post_id: postId,
+            conteudo_extra: content,
+          });
+        } catch (err) {
+          console.warn(`Error creating mention notification for @${username}:`, err);
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Processes mentions for a comment
+ */
+export async function processCommentMentions(
+  commentId: string,
+  postId: string,
+  commentText: string,
+  author: UserProfile,
+  allUsers: UserProfile[] = []
+): Promise<void> {
+  if (!commentText) return;
+  const mentions = extractMentions(commentText);
+  if (mentions.length === 0) return;
+
+  for (const username of mentions) {
+    const targetUser = allUsers.find(
+      (u) => u.username.toLowerCase().replace(/^@/, '') === username
+    );
+
+    if (targetUser && targetUser.uid !== author.uid) {
+      try {
+        const mentionRef = doc(collection(db, 'mencao'));
+        await setDoc(mentionRef, {
+          id: mentionRef.id,
+          post_id: postId,
+          comentario_id: commentId,
+          usuario_mencionado_id: targetUser.uid,
+          criado_em: new Date().toISOString(),
+        });
+
+        await createNotification({
+          usuario_destinatario_id: targetUser.uid,
+          usuario_origem_id: author.uid,
+          usuario_origem_username: author.username,
+          usuario_origem_displayName: author.displayName || author.username,
+          usuario_origem_photoURL: author.photoURL || '',
+          tipo: 'mencao',
+          post_id: postId,
+          comentario_id: commentId,
+          conteudo_extra: commentText,
+        });
+      } catch (err) {
+        console.warn(`Error creating comment mention notification for @${username}:`, err);
+      }
+    }
+  }
+}
+
+/**
+ * Fetches popular hashtags with optional search query filtering
+ */
+export async function fetchHashtags(searchQuery?: string): Promise<HashtagItem[]> {
+  const cleanQuery = searchQuery ? searchQuery.toLowerCase().replace(/^#/, '').trim() : '';
+
+  try {
+    const hashtagsCol = collection(db, 'hashtags');
+    const q = query(hashtagsCol, orderBy('contagem_posts', 'desc'), limit(50));
+    const snap = await getDocs(q);
+
+    const results: HashtagItem[] = [];
+    snap.forEach((d) => {
+      const data = d.data() as HashtagItem;
+      results.push({
+        id: d.id,
+        nome: data.nome || d.id,
+        contagem_posts: typeof data.contagem_posts === 'number' ? data.contagem_posts : 1,
+      });
+    });
+
+    const seedHashtags: HashtagItem[] = [
+      { id: 'viagem', nome: 'viagem', contagem_posts: 42100 },
+      { id: 'viagemdefaria', nome: 'viagemdefaria', contagem_posts: 890 },
+      { id: 'fotografia', nome: 'fotografia', contagem_posts: 18500 },
+      { id: 'design', nome: 'design', contagem_posts: 12400 },
+      { id: 'musica', nome: 'musica', contagem_posts: 9800 },
+      { id: 'sp', nome: 'sp', contagem_posts: 34100 },
+      { id: 'brasil', nome: 'brasil', contagem_posts: 56200 },
+      { id: 'lifestyle', nome: 'lifestyle', contagem_posts: 8400 },
+    ];
+
+    const combinedMap = new Map<string, HashtagItem>();
+    seedHashtags.forEach((h) => combinedMap.set(h.nome.toLowerCase(), h));
+    results.forEach((h) => combinedMap.set(h.nome.toLowerCase(), h));
+
+    let allTags = Array.from(combinedMap.values());
+
+    if (cleanQuery) {
+      allTags = allTags.filter((h) => h.nome.toLowerCase().includes(cleanQuery));
+    }
+
+    allTags.sort((a, b) => b.contagem_posts - a.contagem_posts);
+    return allTags;
+  } catch (err) {
+    console.warn('Error fetching hashtags from Firestore:', err);
+    return [
+      { id: 'viagem', nome: 'viagem', contagem_posts: 42100 },
+      { id: 'viagemdefaria', nome: 'viagemdefaria', contagem_posts: 890 },
+      { id: 'fotografia', nome: 'fotografia', contagem_posts: 18500 },
+    ];
+  }
+}
+
+/**
+ * Fetches hashtag details and all posts containing a hashtag
+ */
+export async function getHashtagDetailsAndPosts(tagName: string): Promise<{
+  hashtag: HashtagItem;
+  posts: PostItem[];
+}> {
+  const cleanTag = tagName.toLowerCase().replace(/^#/, '').trim();
+
+  try {
+    const postsCol = collection(db, 'posts');
+    const q = query(postsCol, orderBy('createdAt', 'desc'), limit(100));
+    const snap = await getDocs(q);
+
+    const matchingPosts: PostItem[] = [];
+    snap.forEach((docSnap) => {
+      const data = docSnap.data() as PostItem;
+      const post: PostItem = {
+        ...data,
+        id: docSnap.id,
+        likes: Array.isArray(data.likes) ? data.likes : [],
+        mediaUrls: Array.isArray(data.mediaUrls)
+          ? data.mediaUrls
+          : data.mediaUrl
+          ? [data.mediaUrl]
+          : [],
+      };
+
+      const hasTagInArray = Array.isArray(post.hashtags) && post.hashtags.includes(cleanTag);
+      const hasTagInContent = post.content
+        ? post.content.toLowerCase().includes(`#${cleanTag}`)
+        : false;
+
+      if (hasTagInArray || hasTagInContent) {
+        matchingPosts.push(post);
+      }
+    });
+
+    let count = matchingPosts.length;
+    if (cleanTag === 'viagem' && count < 42100) count = 42100;
+
+    try {
+      const tagSnap = await getDoc(doc(db, 'hashtags', cleanTag));
+      if (tagSnap.exists()) {
+        const data = tagSnap.data() as HashtagItem;
+        if (data.contagem_posts && data.contagem_posts > count) {
+          count = data.contagem_posts;
+        }
+      }
+    } catch {}
+
+    return {
+      hashtag: {
+        id: cleanTag,
+        nome: cleanTag,
+        contagem_posts: count,
+      },
+      posts: matchingPosts,
+    };
+  } catch (err) {
+    console.error(`Error fetching hashtag details for #${cleanTag}:`, err);
+    return {
+      hashtag: { id: cleanTag, nome: cleanTag, contagem_posts: 0 },
+      posts: [],
+    };
+  }
+}
+
+/**
  * Creates a new post in feed (multimedia: text, image, or lightweight video) with collaborator invitations
  */
 export async function createPost(params: {
@@ -317,6 +578,7 @@ export async function createPost(params: {
   thumbnailUrl?: string;
   videoDuration?: number;
   collaborators?: PostCollaborator[];
+  allUsers?: UserProfile[];
 }): Promise<string> {
   const postRef = doc(collection(db, 'posts'));
   const now = new Date();
@@ -326,6 +588,7 @@ export async function createPost(params: {
     : (params.mediaUrl ? [params.mediaUrl] : []);
 
   const primaryMedia = midias.length > 0 ? midias[0] : (params.mediaUrl || '');
+  const hashtags = extractHashtags(params.content);
 
   const rawPost: Omit<PostItem, 'id'> = {
     authorUid: params.author.uid,
@@ -333,6 +596,7 @@ export async function createPost(params: {
     authorDisplayName: params.author.displayName || params.author.username,
     authorPhotoURL: params.author.photoURL || '',
     content: params.content,
+    hashtags,
     mediaType: params.mediaType || (midias.length > 0 ? 'image' : 'text'),
     mediaUrls: midias,
     mediaUrl: primaryMedia,
@@ -347,6 +611,11 @@ export async function createPost(params: {
   const newPost = sanitizeForFirestore(rawPost);
 
   await setDoc(postRef, newPost);
+
+  // Process hashtags and mentions asynchronously
+  processPostHashtagsAndMentions(postRef.id, params.content, params.author, params.allUsers || []).catch(
+    (e) => console.warn('Error processing hashtags/mentions:', e)
+  );
 
   // Trigger collaboration invite notifications for pending collaborators
   if (Array.isArray(params.collaborators)) {
@@ -470,6 +739,7 @@ export async function createComment(params: {
   texto: string;
   comentario_pai_id?: string | null;
   resposta_para_username?: string;
+  allUsers?: UserProfile[];
 }): Promise<string> {
   const commentRef = doc(collection(db, 'comments'));
   const now = new Date().toISOString();
@@ -495,6 +765,11 @@ export async function createComment(params: {
 
   const sanitized = sanitizeForFirestore(rawComment);
   await setDoc(commentRef, sanitized);
+
+  // Process mentions in comment asynchronously
+  processCommentMentions(commentRef.id, params.postId, cleanText, params.author, params.allUsers || []).catch(
+    (e) => console.warn('Error processing comment mentions:', e)
+  );
 
   // Increment commentsCount on the post document
   try {
@@ -1855,6 +2130,318 @@ export async function fetchSuggestedUsersForExplore(
   scoredUsers.sort((a, b) => b.score - a.score);
   return scoredUsers.map((su) => su.user);
 }
+
+/**
+ * Creates a report for a post, comment, user profile, or story.
+ * If target receives >= 3 reports, automatically marks auto_hidden: true.
+ */
+export async function createReport(reportData: {
+  denunciante_id: string;
+  alvo_tipo: ReportTargetType;
+  alvo_id: string;
+  motivo: ReportReason;
+}): Promise<void> {
+  const reportRef = doc(collection(db, 'denuncias'));
+  const newReport: ReportItem = {
+    id: reportRef.id,
+    denunciante_id: reportData.denunciante_id,
+    alvo_tipo: reportData.alvo_tipo,
+    alvo_id: reportData.alvo_id,
+    motivo: reportData.motivo,
+    status: 'pendente',
+    criado_em: new Date().toISOString(),
+  };
+
+  await setDoc(reportRef, newReport);
+
+  // Check recent reports count for target
+  try {
+    const q = query(
+      collection(db, 'denuncias'),
+      where('alvo_id', '==', reportData.alvo_id)
+    );
+    const snap = await getDocs(q);
+    if (snap.size >= 3) {
+      if (reportData.alvo_tipo === 'post') {
+        const postRef = doc(db, 'posts', reportData.alvo_id);
+        await updateDoc(postRef, { auto_hidden: true });
+      } else if (reportData.alvo_tipo === 'comentario') {
+        const commentRef = doc(db, 'comments', reportData.alvo_id);
+        await updateDoc(commentRef, { auto_hidden: true });
+      } else if (reportData.alvo_tipo === 'story') {
+        const storyRef = doc(db, 'stories', reportData.alvo_id);
+        await updateDoc(storyRef, { auto_hidden: true });
+      }
+    }
+  } catch (err) {
+    console.error('Error processing auto-hide threshold for report:', err);
+  }
+}
+
+/**
+ * Blocks a user. Automatically undoes follow relationships in BOTH directions.
+ */
+export async function blockUser(blockerUid: string, blockedUid: string): Promise<void> {
+  if (!blockerUid || !blockedUid || blockerUid === blockedUid) return;
+
+  const blockId = `${blockerUid}_${blockedUid}`;
+  const blockRef = doc(db, 'bloqueios', blockId);
+  await setDoc(blockRef, {
+    id: blockId,
+    usuario_bloqueador_id: blockerUid,
+    usuario_bloqueado_id: blockedUid,
+    criado_em: new Date().toISOString(),
+  });
+
+  // Undo follow from blocker -> blocked
+  try {
+    const follow1Ref = doc(db, 'follows', `${blockerUid}_${blockedUid}`);
+    await deleteDoc(follow1Ref);
+  } catch (e) {
+    // Ignore if didn't exist
+  }
+
+  // Undo follow from blocked -> blocker
+  try {
+    const follow2Ref = doc(db, 'follows', `${blockedUid}_${blockerUid}`);
+    await deleteDoc(follow2Ref);
+  } catch (e) {
+    // Ignore if didn't exist
+  }
+}
+
+/**
+ * Unblocks a user. (Note: does NOT automatically re-follow).
+ */
+export async function unblockUser(blockerUid: string, blockedUid: string): Promise<void> {
+  if (!blockerUid || !blockedUid) return;
+  const blockId = `${blockerUid}_${blockedUid}`;
+  await deleteDoc(doc(db, 'bloqueios', blockId));
+}
+
+/**
+ * Real-time listener for users blocked by current UID.
+ */
+export function subscribeMyBlockedUsers(
+  uid: string,
+  callback: (blockedUidSet: Set<string>, blockList: BlockItem[]) => void
+) {
+  if (!uid) {
+    callback(new Set(), []);
+    return () => {};
+  }
+
+  const q = query(
+    collection(db, 'bloqueios'),
+    where('usuario_bloqueador_id', '==', uid)
+  );
+
+  return onSnapshot(
+    q,
+    (snap) => {
+      const set = new Set<string>();
+      const list: BlockItem[] = [];
+      snap.docs.forEach((docSnap) => {
+        const data = docSnap.data() as BlockItem;
+        if (data.usuario_bloqueado_id) {
+          set.add(data.usuario_bloqueado_id);
+          list.push(data);
+        }
+      });
+      callback(set, list);
+    },
+    (err) => {
+      console.error('Error listening to my blocked users:', err);
+    }
+  );
+}
+
+/**
+ * Real-time listener for users who have blocked current UID.
+ */
+export function subscribeUsersWhoBlockedMe(
+  uid: string,
+  callback: (blockerUidSet: Set<string>) => void
+) {
+  if (!uid) {
+    callback(new Set());
+    return () => {};
+  }
+
+  const q = query(
+    collection(db, 'bloqueios'),
+    where('usuario_bloqueado_id', '==', uid)
+  );
+
+  return onSnapshot(
+    q,
+    (snap) => {
+      const set = new Set<string>();
+      snap.docs.forEach((docSnap) => {
+        const data = docSnap.data() as BlockItem;
+        if (data.usuario_bloqueador_id) {
+          set.add(data.usuario_bloqueador_id);
+        }
+      });
+      callback(set);
+    },
+    (err) => {
+      console.error('Error listening to users who blocked me:', err);
+    }
+  );
+}
+
+/**
+ * Creates a follow request for a private account
+ */
+export async function createFollowRequest(
+  solicitanteUid: string,
+  targetUid: string,
+  solicitanteProfile?: UserProfile
+): Promise<void> {
+  const reqId = `${solicitanteUid}_${targetUid}`;
+  const reqRef = doc(db, 'solicitacoes_seguir', reqId);
+
+  await setDoc(reqRef, {
+    id: reqId,
+    solicitante_id: solicitanteUid,
+    usuario_alvo_id: targetUid,
+    status: 'pendente',
+    criado_em: new Date().toISOString(),
+  });
+
+  // Create notification for target user
+  createNotification({
+    usuario_destinatario_id: targetUid,
+    usuario_origem_id: solicitanteUid,
+    usuario_origem_username: solicitanteProfile?.username || '',
+    usuario_origem_displayName: solicitanteProfile?.displayName || solicitanteProfile?.username || '',
+    usuario_origem_photoURL: solicitanteProfile?.photoURL || '',
+    tipo: 'solicitacao_seguir',
+  }).catch((e) => console.warn('Error creating follow request notification:', e));
+}
+
+/**
+ * Cancels a pending follow request
+ */
+export async function cancelFollowRequest(
+  solicitanteUid: string,
+  targetUid: string
+): Promise<void> {
+  const reqId = `${solicitanteUid}_${targetUid}`;
+  await deleteDoc(doc(db, 'solicitacoes_seguir', reqId));
+}
+
+/**
+ * Responds to a follow request (accept or decline)
+ */
+export async function respondFollowRequest(params: {
+  solicitanteUid: string;
+  targetUid: string;
+  action: 'aceitar' | 'recusar';
+  targetProfile?: UserProfile;
+}): Promise<void> {
+  const reqId = `${params.solicitanteUid}_${params.targetUid}`;
+
+  if (params.action === 'aceitar') {
+    // 1. Delete or update request status
+    await deleteDoc(doc(db, 'solicitacoes_seguir', reqId));
+
+    // 2. Create actual follow record
+    const followId = `${params.solicitanteUid}_${params.targetUid}`;
+    await setDoc(doc(db, 'follows', followId), {
+      followerUid: params.solicitanteUid,
+      followingUid: params.targetUid,
+      createdAt: new Date().toISOString(),
+    });
+
+    // 3. Notify the requesting user that request was accepted
+    createNotification({
+      usuario_destinatario_id: params.solicitanteUid,
+      usuario_origem_id: params.targetUid,
+      usuario_origem_username: params.targetProfile?.username || '',
+      usuario_origem_displayName: params.targetProfile?.displayName || params.targetProfile?.username || '',
+      usuario_origem_photoURL: params.targetProfile?.photoURL || '',
+      tipo: 'novo_seguidor',
+    }).catch((e) => console.warn('Error creating follow accept notification:', e));
+  } else {
+    // Recusar: Delete the request so solicitante can request again in the future
+    await deleteDoc(doc(db, 'solicitacoes_seguir', reqId));
+  }
+}
+
+/**
+ * Real-time listener for incoming follow requests to current user
+ */
+export function subscribeIncomingFollowRequests(
+  targetUid: string,
+  callback: (requests: FollowRequestItem[]) => void
+) {
+  if (!targetUid) {
+    callback([]);
+    return () => {};
+  }
+
+  const q = query(
+    collection(db, 'solicitacoes_seguir'),
+    where('usuario_alvo_id', '==', targetUid),
+    where('status', '==', 'pendente')
+  );
+
+  return onSnapshot(
+    q,
+    (snap) => {
+      const list: FollowRequestItem[] = [];
+      snap.docs.forEach((d) => {
+        const item = d.data() as FollowRequestItem;
+        list.push({ ...item, id: d.id });
+      });
+      callback(list);
+    },
+    (err) => {
+      console.error('Error listening to incoming follow requests:', err);
+      callback([]);
+    }
+  );
+}
+
+/**
+ * Real-time listener for outgoing pending follow requests sent by current user
+ */
+export function subscribeOutgoingFollowRequests(
+  solicitanteUid: string,
+  callback: (pendingTargetUids: Set<string>) => void
+) {
+  if (!solicitanteUid) {
+    callback(new Set());
+    return () => {};
+  }
+
+  const q = query(
+    collection(db, 'solicitacoes_seguir'),
+    where('solicitante_id', '==', solicitanteUid),
+    where('status', '==', 'pendente')
+  );
+
+  return onSnapshot(
+    q,
+    (snap) => {
+      const set = new Set<string>();
+      snap.docs.forEach((d) => {
+        const item = d.data() as FollowRequestItem;
+        if (item.usuario_alvo_id) {
+          set.add(item.usuario_alvo_id);
+        }
+      });
+      callback(set);
+    },
+    (err) => {
+      console.error('Error listening to outgoing follow requests:', err);
+      callback(new Set());
+    }
+  );
+}
+
 
 
 

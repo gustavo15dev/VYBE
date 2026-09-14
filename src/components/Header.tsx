@@ -22,6 +22,7 @@ import {
   History,
   Users,
   User,
+  Settings,
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -33,14 +34,17 @@ interface HeaderProps {
   hasUnreadMessages?: boolean;
   hasUnreadNotifications?: boolean;
   unreadNotificationsCount?: number;
+  hasUnreadRequests?: boolean;
   onNavigateHome?: () => void;
   onNavigateFriends?: () => void;
   onNavigateProfile?: () => void;
   onNavigateMessages?: () => void;
   onNavigateNotifications?: () => void;
+  onNavigateSettings?: () => void;
   onSelectUser?: (uid: string) => void;
   onShowToast?: (msg: string, type?: 'info' | 'success' | 'error') => void;
   onInteractionAttempt?: (featureName: string) => void;
+  onOpenAuthModal?: (tab?: 'login' | 'register') => void;
 }
 
 export function Header({
@@ -52,14 +56,17 @@ export function Header({
   hasUnreadMessages = false,
   hasUnreadNotifications = false,
   unreadNotificationsCount = 0,
+  hasUnreadRequests = false,
   onNavigateHome,
   onNavigateFriends,
   onNavigateProfile,
   onNavigateMessages,
   onNavigateNotifications,
+  onNavigateSettings,
   onSelectUser,
   onShowToast,
   onInteractionAttempt,
+  onOpenAuthModal,
 }: HeaderProps) {
   const { profile, user, logout } = useAuth();
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -412,154 +419,197 @@ export function Header({
         )}
       </div>
 
-      {/* Right: Icons & Profile */}
+      {/* Right: Icons & Profile OR Guest Auth Buttons */}
       <div className="flex items-center gap-2 sm:gap-3.5 shrink-0">
-        <button
-          id="btn-nav-home"
-          type="button"
-          className="p-2 rounded-full text-[#548687] hover:bg-[#F1F5F5] transition-colors cursor-pointer"
-          title="Início"
-          onClick={() => handleAction('Início')}
-        >
-          <Home className="w-5 h-5 stroke-[2.2]" />
-        </button>
+        {user ? (
+          <>
+            <button
+              id="btn-nav-home"
+              type="button"
+              className="p-2 rounded-full text-[#548687] hover:bg-[#F1F5F5] transition-colors cursor-pointer"
+              title="Início"
+              onClick={() => handleAction('Início')}
+            >
+              <Home className="w-5 h-5 stroke-[2.2]" />
+            </button>
 
-        <button
-          id="btn-nav-friends"
-          type="button"
-          className="p-2 rounded-full text-gray-700 hover:text-gray-900 hover:bg-[#F1F5F5] transition-colors cursor-pointer"
-          title="Amigos"
-          onClick={() => handleAction('Amigos')}
-        >
-          <Users className="w-5 h-5 stroke-[2]" />
-        </button>
+            <button
+              id="btn-nav-friends"
+              type="button"
+              className="p-2 rounded-full text-gray-700 hover:text-gray-900 hover:bg-[#F1F5F5] transition-colors cursor-pointer relative"
+              title="Amigos"
+              onClick={() => handleAction('Amigos')}
+            >
+              <Users className="w-5 h-5 stroke-[2]" />
+              {hasUnreadRequests && (
+                <span className="absolute top-1.5 right-1.5 flex h-2.5 w-2.5">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-500 opacity-80" />
+                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-500 ring-1.5 ring-white" />
+                </span>
+              )}
+            </button>
 
-        <button
-          id="btn-nav-chat"
-          type="button"
-          className="p-2 rounded-full text-gray-700 hover:text-gray-900 hover:bg-[#F1F5F5] transition-colors cursor-pointer relative"
-          title="Mensagens"
-          onClick={() => handleAction('Mensagens')}
-        >
-          <MessageCircle className="w-5 h-5 stroke-[2]" />
-          {hasUnreadMessages && (
-            <span className="absolute top-1.5 right-1.5 flex h-2.5 w-2.5">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#548687] opacity-80" />
-              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-[#45B6B0] ring-1.5 ring-white" />
-            </span>
-          )}
-        </button>
+            <button
+              id="btn-nav-chat"
+              type="button"
+              className="p-2 rounded-full text-gray-700 hover:text-gray-900 hover:bg-[#F1F5F5] transition-colors cursor-pointer relative"
+              title="Mensagens"
+              onClick={() => handleAction('Mensagens')}
+            >
+              <MessageCircle className="w-5 h-5 stroke-[2]" />
+              {hasUnreadMessages && (
+                <span className="absolute top-1.5 right-1.5 flex h-2.5 w-2.5">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#548687] opacity-80" />
+                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-[#45B6B0] ring-1.5 ring-white" />
+                </span>
+              )}
+            </button>
 
-        <button
-          id="btn-nav-notifications"
-          type="button"
-          className="p-2 rounded-full text-gray-700 hover:text-gray-900 hover:bg-[#F1F5F5] transition-colors cursor-pointer relative"
-          title="Notificações"
-          onClick={() => handleAction('Notificações')}
-        >
-          <Bell className="w-5 h-5 stroke-[2]" />
-          {hasUnreadNotifications && (
-            unreadNotificationsCount > 0 ? (
-              <span className="absolute -top-1 -right-1 px-1.5 py-0.2 min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-[#548687] text-white text-[10px] font-bold ring-2 ring-white shadow-xs">
-                {unreadNotificationsCount > 99 ? '99+' : unreadNotificationsCount}
-              </span>
-            ) : (
-              <span className="absolute top-1.5 right-1.5 flex h-2.5 w-2.5">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#548687] opacity-80" />
-                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-[#0F4C5C] ring-1.5 ring-white" />
-              </span>
-            )
-          )}
-        </button>
+            <button
+              id="btn-nav-notifications"
+              type="button"
+              className="p-2 rounded-full text-gray-700 hover:text-gray-900 hover:bg-[#F1F5F5] transition-colors cursor-pointer relative"
+              title="Notificações"
+              onClick={() => handleAction('Notificações')}
+            >
+              <Bell className="w-5 h-5 stroke-[2]" />
+              {hasUnreadNotifications && (
+                unreadNotificationsCount > 0 ? (
+                  <span className="absolute -top-1 -right-1 px-1.5 py-0.2 min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-[#548687] text-white text-[10px] font-bold ring-2 ring-white shadow-xs">
+                    {unreadNotificationsCount > 99 ? '99+' : unreadNotificationsCount}
+                  </span>
+                ) : (
+                  <span className="absolute top-1.5 right-1.5 flex h-2.5 w-2.5">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#548687] opacity-80" />
+                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-[#0F4C5C] ring-1.5 ring-white" />
+                  </span>
+                )
+              )}
+            </button>
 
-        {/* User profile avatar and popup dropdown */}
-        <div className="relative" ref={dropdownRef}>
-          <button
-            id="btn-user-avatar-menu"
-            type="button"
-            onClick={() => setDropdownOpen(!dropdownOpen)}
-            className="flex items-center gap-1.5 p-0.5 rounded-full hover:ring-2 hover:ring-[#548687]/30 transition-all cursor-pointer"
-            title="Conta"
-          >
-            <div className="w-8 h-8 rounded-full bg-[#548687] text-white flex items-center justify-center font-semibold text-sm shadow-xs overflow-hidden">
-              {profile?.photoURL ? (
-                <img src={profile.photoURL} alt="Avatar" className="w-full h-full object-cover" />
-              ) : (
-                <span>{userInitial}</span>
+            {/* User profile avatar and popup dropdown */}
+            <div className="relative" ref={dropdownRef}>
+              <button
+                id="btn-user-avatar-menu"
+                type="button"
+                onClick={() => setDropdownOpen(!dropdownOpen)}
+                className="flex items-center gap-1.5 p-0.5 rounded-full hover:ring-2 hover:ring-[#548687]/30 transition-all cursor-pointer"
+                title="Conta"
+              >
+                <div className="w-8 h-8 rounded-full bg-[#548687] text-white flex items-center justify-center font-semibold text-sm shadow-xs overflow-hidden">
+                  {profile?.photoURL ? (
+                    <img src={profile.photoURL} alt="Avatar" className="w-full h-full object-cover" />
+                  ) : (
+                    <span>{userInitial}</span>
+                  )}
+                </div>
+                <MoreHorizontal className="w-4 h-4 text-gray-500 hidden sm:block" />
+              </button>
+
+              {dropdownOpen && (
+                <div
+                  id="user-profile-dropdown"
+                  className="absolute right-0 mt-2 w-64 bg-white rounded-2xl shadow-xl border border-gray-100 p-3.5 z-50 animate-in fade-in slide-in-from-top-2"
+                >
+                  <div className="flex items-center gap-3 pb-3 border-b border-gray-100">
+                    <div className="w-10 h-10 rounded-full bg-[#548687] text-white flex items-center justify-center font-semibold text-base">
+                      {userInitial}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-semibold text-gray-900 truncate">
+                        {profile?.displayName || 'Usuário VYBE'}
+                      </div>
+                      <div className="text-xs text-[#548687] font-medium truncate">
+                        @{profile?.username || 'vybe_user'}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* User details from DB */}
+                  <div className="py-2.5 space-y-1.5 text-xs text-gray-600 border-b border-gray-100">
+                    <div className="flex items-center gap-2 text-gray-500">
+                      <AtSign className="w-3.5 h-3.5 text-gray-400" />
+                      <span className="truncate">{user?.email}</span>
+                    </div>
+                    {profile?.country && (
+                      <div className="flex items-center gap-2 text-gray-500">
+                        <Globe className="w-3.5 h-3.5 text-gray-400" />
+                        <span>{profile.country}</span>
+                      </div>
+                    )}
+                    {profile?.birthDate && (
+                      <div className="flex items-center gap-2 text-gray-500">
+                        <Calendar className="w-3.5 h-3.5 text-gray-400" />
+                        <span>Nasc: {profile.birthDate}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="pt-2 space-y-1">
+                    <button
+                      id="btn-profile-view-me"
+                      type="button"
+                      onClick={() => {
+                        setDropdownOpen(false);
+                        onNavigateProfile?.();
+                      }}
+                      className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-[#F1F5F5] rounded-xl transition-colors cursor-pointer"
+                    >
+                      <User className="w-4 h-4 text-[#548687]" />
+                      <span>Ver meu perfil</span>
+                    </button>
+
+                    <button
+                      id="btn-header-settings"
+                      type="button"
+                      onClick={() => {
+                        setDropdownOpen(false);
+                        onNavigateSettings?.();
+                      }}
+                      className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-[#F1F5F5] rounded-xl transition-colors cursor-pointer"
+                    >
+                      <Settings className="w-4 h-4 text-gray-500" />
+                      <span>Configurações</span>
+                    </button>
+
+                    <button
+                      id="btn-profile-logout"
+                      type="button"
+                      onClick={() => {
+                        setDropdownOpen(false);
+                        logout();
+                      }}
+                      className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-rose-600 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer"
+                    >
+                      <LogOut className="w-4 h-4" />
+                      <span>Sair da conta</span>
+                    </button>
+                  </div>
+                </div>
               )}
             </div>
-            <MoreHorizontal className="w-4 h-4 text-gray-500 hidden sm:block" />
-          </button>
-
-          {dropdownOpen && (
-            <div
-              id="user-profile-dropdown"
-              className="absolute right-0 mt-2 w-64 bg-white rounded-2xl shadow-xl border border-gray-100 p-3.5 z-50 animate-in fade-in slide-in-from-top-2"
+          </>
+        ) : (
+          /* Guest visitor action buttons matching image.png */
+          <div className="flex items-center gap-2 sm:gap-3">
+            <button
+              id="btn-guest-header-login"
+              type="button"
+              onClick={() => onOpenAuthModal?.('login')}
+              className="px-4 py-1.5 sm:py-2 rounded-xl text-xs sm:text-sm font-semibold text-gray-700 bg-white border border-gray-200 hover:bg-gray-50 transition-colors shadow-2xs cursor-pointer"
             >
-              <div className="flex items-center gap-3 pb-3 border-b border-gray-100">
-                <div className="w-10 h-10 rounded-full bg-[#548687] text-white flex items-center justify-center font-semibold text-base">
-                  {userInitial}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-semibold text-gray-900 truncate">
-                    {profile?.displayName || 'Usuário VYBE'}
-                  </div>
-                  <div className="text-xs text-[#548687] font-medium truncate">
-                    @{profile?.username || 'vybe_user'}
-                  </div>
-                </div>
-              </div>
-
-              {/* User details from DB */}
-              <div className="py-2.5 space-y-1.5 text-xs text-gray-600 border-b border-gray-100">
-                <div className="flex items-center gap-2 text-gray-500">
-                  <AtSign className="w-3.5 h-3.5 text-gray-400" />
-                  <span className="truncate">{user?.email}</span>
-                </div>
-                {profile?.country && (
-                  <div className="flex items-center gap-2 text-gray-500">
-                    <Globe className="w-3.5 h-3.5 text-gray-400" />
-                    <span>{profile.country}</span>
-                  </div>
-                )}
-                {profile?.birthDate && (
-                  <div className="flex items-center gap-2 text-gray-500">
-                    <Calendar className="w-3.5 h-3.5 text-gray-400" />
-                    <span>Nasc: {profile.birthDate}</span>
-                  </div>
-                )}
-              </div>
-
-              <div className="pt-2 space-y-1">
-                <button
-                  id="btn-profile-view-me"
-                  type="button"
-                  onClick={() => {
-                    setDropdownOpen(false);
-                    onNavigateProfile?.();
-                  }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-[#F1F5F5] rounded-xl transition-colors cursor-pointer"
-                >
-                  <User className="w-4 h-4 text-[#548687]" />
-                  <span>Ver meu perfil</span>
-                </button>
-
-                <button
-                  id="btn-profile-logout"
-                  type="button"
-                  onClick={() => {
-                    setDropdownOpen(false);
-                    logout();
-                  }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-rose-600 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer"
-                >
-                  <LogOut className="w-4 h-4" />
-                  <span>Sair da conta</span>
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
+              Entrar
+            </button>
+            <button
+              id="btn-guest-header-register"
+              type="button"
+              onClick={() => onOpenAuthModal?.('register')}
+              className="px-4 py-1.5 sm:py-2 rounded-xl text-xs sm:text-sm font-semibold text-white bg-[#548687] hover:bg-[#436e6f] transition-all shadow-xs cursor-pointer"
+            >
+              Cadastrar
+            </button>
+          </div>
+        )}
       </div>
     </header>
   );

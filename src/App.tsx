@@ -14,11 +14,17 @@ import { PostCommentsPanel } from './components/PostCommentsPanel';
 import { MessagesView } from './components/MessagesView';
 import { NotificationsView } from './components/NotificationsView';
 import { ExploreView } from './components/ExploreView';
+import { SettingsView } from './components/SettingsView';
 import { SharePostModal } from './components/SharePostModal';
 import { PostEngagementsModal } from './components/PostEngagementsModal';
+import { PublicPostView } from './components/PublicPostView';
+import { HashtagView } from './components/HashtagView';
 import { ToastContainer, ToastMessage } from './components/Toast';
-import { UserStoriesGroup, PostItem, ConversationItem, NotificationItem } from './types/social';
+import { UserStoriesGroup, PostItem, ConversationItem, NotificationItem, FollowRequestItem } from './types/social';
 import { UserProfile } from './types/user';
+import { ReportModal } from './components/ReportModal';
+import { BlockModal } from './components/BlockModal';
+import { ReportTargetType } from './types/social';
 import {
   subscribeFollowing,
   subscribeFollowers,
@@ -26,20 +32,109 @@ import {
   subscribeAllUsers,
   subscribeConversations,
   subscribeNotifications,
+  subscribeMyBlockedUsers,
+  subscribeUsersWhoBlockedMe,
+  subscribeIncomingFollowRequests,
+  subscribeOutgoingFollowRequests,
   cleanupSeedData,
 } from './services/socialService';
 import { Loader2, Home, Users, MessageCircle, Bell, Compass, User } from 'lucide-react';
 
 function AppContent() {
-  const { user, profile, loading, needsProfileCompletion } = useAuth();
+  const { user, profile, loading, needsProfileCompletion, setProfile, logout } = useAuth();
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [currentView, setCurrentView] = useState<AppView>('home');
   const [profileTargetUid, setProfileTargetUid] = useState<string | null>(null);
+
+  // Single Public Post URL Route state (/p/:postId or ?p=postId)
+  const [singlePostId, setSinglePostId] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null;
+    const path = window.location.pathname;
+    if (path.startsWith('/p/')) {
+      const parts = path.split('/p/');
+      const id = parts[1]?.split('/')[0]?.split('?')[0];
+      if (id && id.trim()) return id.trim();
+    }
+    const params = new URLSearchParams(window.location.search);
+    return params.get('p') || params.get('post') || null;
+  });
+
+  // Hashtag Route State (/tag/:nome or ?tag=nome)
+  const [selectedHashtag, setSelectedHashtag] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null;
+    const path = window.location.pathname;
+    if (path.startsWith('/tag/')) {
+      const parts = path.split('/tag/');
+      const tag = parts[1]?.split('/')[0]?.split('?')[0];
+      if (tag && tag.trim()) return tag.trim();
+    }
+    const params = new URLSearchParams(window.location.search);
+    return params.get('tag') || null;
+  });
+
+  // Guest Popup Auth Modal State
+  const [authModalState, setAuthModalState] = useState<{
+    isOpen: boolean;
+    tab: 'login' | 'register';
+    paywallMessage?: string;
+  } | null>(null);
+
+  useEffect(() => {
+    if (selectedHashtag) {
+      setCurrentView('hashtag');
+    }
+  }, []);
+
+  useEffect(() => {
+    const handlePopState = () => {
+      const path = window.location.pathname;
+      if (path.startsWith('/p/')) {
+        const parts = path.split('/p/');
+        const id = parts[1]?.split('/')[0]?.split('?')[0];
+        if (id && id.trim()) {
+          setSinglePostId(id.trim());
+          return;
+        }
+      }
+      if (path.startsWith('/tag/')) {
+        const parts = path.split('/tag/');
+        const tag = parts[1]?.split('/')[0]?.split('?')[0];
+        if (tag && tag.trim()) {
+          setSelectedHashtag(tag.trim());
+          setCurrentView('hashtag');
+          return;
+        }
+      }
+      const params = new URLSearchParams(window.location.search);
+      const qp = params.get('p') || params.get('post');
+      const qt = params.get('tag');
+      setSinglePostId(qp || null);
+      if (qt) {
+        setSelectedHashtag(qt);
+        setCurrentView('hashtag');
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
 
   // Follow graph and user data state
   const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
   const [myFollowing, setMyFollowing] = useState<Set<string>>(new Set());
   const [myFollowers, setMyFollowers] = useState<Set<string>>(new Set());
+  const [myBlockedUsers, setMyBlockedUsers] = useState<Set<string>>(new Set());
+  const [usersWhoBlockedMe, setUsersWhoBlockedMe] = useState<Set<string>>(new Set());
+  
+  const [myOutgoingRequests, setMyOutgoingRequests] = useState<Set<string>>(new Set());
+  const [myIncomingRequests, setMyIncomingRequests] = useState<FollowRequestItem[]>([]);
+
+  // Union set of all blocked uids
+  const allBlockedUids = new Set<string>([
+    ...Array.from<string>(myBlockedUsers),
+    ...Array.from<string>(usersWhoBlockedMe),
+  ]);
+
   const [allFollows, setAllFollows] = useState<{ followerUid: string; followingUid: string }[]>(
     []
   );
@@ -60,6 +155,43 @@ function AppContent() {
     post: PostItem;
     initialTab: 'curtidas' | 'visualizacoes';
   } | null>(null);
+
+  // Report & Block Modal state
+  const [reportModalState, setReportModalState] = useState<{
+    isOpen: boolean;
+    targetType: ReportTargetType;
+    targetId: string;
+  } | null>(null);
+
+  const [blockModalState, setBlockModalState] = useState<{
+    isOpen: boolean;
+    targetUid: string;
+    targetUsername: string;
+  } | null>(null);
+
+  const handleOpenReport = (type: ReportTargetType, id: string) => {
+    if (!user?.uid) {
+      setAuthModalState({
+        isOpen: true,
+        tab: 'login',
+        paywallMessage: 'Faça login para denunciar um conteúdo.',
+      });
+      return;
+    }
+    setReportModalState({ isOpen: true, targetType: type, targetId: id });
+  };
+
+  const handleOpenBlock = (targetUid: string, targetUsername: string) => {
+    if (!user?.uid) {
+      setAuthModalState({
+        isOpen: true,
+        tab: 'login',
+        paywallMessage: 'Faça login para bloquear um usuário.',
+      });
+      return;
+    }
+    setBlockModalState({ isOpen: true, targetUid, targetUsername });
+  };
 
   const handleOpenComments = (post: PostItem) => {
     if (typeof window !== 'undefined' && window.innerWidth < 1024) {
@@ -88,6 +220,15 @@ function AppContent() {
   const handleSelectUser = (uid: string) => {
     setProfileTargetUid(uid);
     setCurrentView('profile');
+  };
+
+  const handleSelectHashtag = (tag: string) => {
+    const cleanTag = tag.toLowerCase().replace(/^#/, '').trim();
+    setSelectedHashtag(cleanTag);
+    setCurrentView('hashtag');
+    if (typeof window !== 'undefined') {
+      window.history.pushState({}, '', `/tag/${cleanTag}`);
+    }
   };
 
   const handleNavigateProfile = () => {
@@ -134,6 +275,26 @@ function AppContent() {
       setNotifications(notifList);
     });
 
+    // Subscribe to users I have blocked
+    const unsubBlockedByMe = subscribeMyBlockedUsers(user.uid, (set) => {
+      setMyBlockedUsers(set);
+    });
+
+    // Subscribe to users who blocked me
+    const unsubBlockedMe = subscribeUsersWhoBlockedMe(user.uid, (set) => {
+      setUsersWhoBlockedMe(set);
+    });
+
+    // Subscribe to incoming follow requests
+    const unsubIncomingReqs = subscribeIncomingFollowRequests(user.uid, (reqs) => {
+      setMyIncomingRequests(reqs);
+    });
+
+    // Subscribe to outgoing follow requests
+    const unsubOutgoingReqs = subscribeOutgoingFollowRequests(user.uid, (set) => {
+      setMyOutgoingRequests(set);
+    });
+
     return () => {
       unsubUsers();
       unsubFollowing();
@@ -141,6 +302,10 @@ function AppContent() {
       unsubAllFollows();
       unsubConversations();
       unsubNotifications();
+      unsubBlockedByMe();
+      unsubBlockedMe();
+      unsubIncomingReqs();
+      unsubOutgoingReqs();
     };
   }, [user?.uid]);
 
@@ -180,7 +345,169 @@ function AppContent() {
     );
   }
 
-  // Not authenticated or pending profile completion -> Show Auth Page
+  // If accessing a single public post page (/p/:postId)
+  if (singlePostId) {
+    return (
+      <div className="min-h-screen bg-[#F7FAFA] flex flex-col text-[#1E293B]">
+        {/* Header with guest mode or logged-in mode */}
+        <Header
+          currentUid={user?.uid || ''}
+          allUsers={allUsers}
+          myFollowing={myFollowing}
+          myFollowers={myFollowers}
+          allFollows={allFollows}
+          hasUnreadMessages={hasUnreadMessages}
+          hasUnreadNotifications={unreadNotificationsCount > 0}
+          unreadNotificationsCount={unreadNotificationsCount}
+          onNavigateHome={() => {
+            if (typeof window !== 'undefined') {
+              window.history.pushState({}, '', '/');
+            }
+            setSinglePostId(null);
+            setCurrentView('home');
+          }}
+          onNavigateFriends={() => {
+            if (typeof window !== 'undefined') {
+              window.history.pushState({}, '', '/');
+            }
+            setSinglePostId(null);
+            setCurrentView('friends');
+          }}
+          onNavigateProfile={() => {
+            if (typeof window !== 'undefined') {
+              window.history.pushState({}, '', '/');
+            }
+            setSinglePostId(null);
+            handleNavigateProfile();
+          }}
+          onNavigateMessages={() => {
+            if (typeof window !== 'undefined') {
+              window.history.pushState({}, '', '/');
+            }
+            setSinglePostId(null);
+            setCurrentView('messages');
+          }}
+          onNavigateNotifications={() => {
+            if (typeof window !== 'undefined') {
+              window.history.pushState({}, '', '/');
+            }
+            setSinglePostId(null);
+            setCurrentView('notifications');
+          }}
+          onSelectUser={(uid) => {
+            if (typeof window !== 'undefined') {
+              window.history.pushState({}, '', '/');
+            }
+            setSinglePostId(null);
+            handleSelectUser(uid);
+          }}
+          onOpenAuthModal={(tab) => {
+            setAuthModalState({
+              isOpen: true,
+              tab: tab || 'login',
+            });
+          }}
+          onShowToast={addToast}
+          onInteractionAttempt={handleInteractionNotice}
+        />
+
+        {/* Public Post Main Container */}
+        <main className="flex-1 w-full pb-12">
+          <PublicPostView
+            postId={singlePostId}
+            currentUid={user?.uid}
+            myFollowing={myFollowing}
+            allUsers={allUsers}
+            onSelectUser={(uid) => {
+              if (user) {
+                if (typeof window !== 'undefined') {
+                  window.history.pushState({}, '', '/');
+                }
+                setSinglePostId(null);
+                handleSelectUser(uid);
+              } else {
+                setAuthModalState({
+                  isOpen: true,
+                  tab: 'login',
+                  paywallMessage: 'ver este perfil',
+                });
+              }
+            }}
+            onSelectHashtag={(tag) => {
+              if (typeof window !== 'undefined') {
+                window.history.pushState({}, '', '/');
+              }
+              setSinglePostId(null);
+              handleSelectHashtag(tag);
+            }}
+            onOpenAuthModal={(tab, paywallMsg) => {
+              setAuthModalState({
+                isOpen: true,
+                tab: tab || 'login',
+                paywallMessage: paywallMsg,
+              });
+            }}
+            onShowToast={addToast}
+            onOpenEngagements={(post, tab) => {
+              if (user) {
+                setEngagementsModalState({ post, initialTab: tab });
+              } else {
+                setAuthModalState({
+                  isOpen: true,
+                  tab: 'login',
+                  paywallMessage: 'ver estatísticas e curtidas',
+                });
+              }
+            }}
+            onBackHome={() => {
+              if (typeof window !== 'undefined') {
+                window.history.pushState({}, '', '/');
+              }
+              setSinglePostId(null);
+            }}
+          />
+        </main>
+
+        {/* Soft Paywall Auth Modal Popup for Guests */}
+        {authModalState?.isOpen && (
+          <AuthModal
+            isModal={true}
+            initialTab={authModalState.tab}
+            paywallMessage={authModalState.paywallMessage}
+            onClose={() => setAuthModalState(null)}
+            showToast={addToast}
+          />
+        )}
+
+        {/* Engagements Modal if logged in */}
+        {engagementsModalState && (
+          <PostEngagementsModal
+            post={engagementsModalState.post}
+            initialTab={engagementsModalState.initialTab}
+            isOpen={true}
+            onClose={() => setEngagementsModalState(null)}
+            allUsers={allUsers}
+            myFollowing={myFollowing}
+            myFollowers={myFollowers}
+            currentUid={user?.uid}
+            onSelectUser={(uid) => {
+              setEngagementsModalState(null);
+              if (typeof window !== 'undefined') {
+                window.history.pushState({}, '', '/');
+              }
+              setSinglePostId(null);
+              handleSelectUser(uid);
+            }}
+            onShowToast={addToast}
+          />
+        )}
+
+        <ToastContainer toasts={toasts} onDismiss={removeToast} />
+      </div>
+    );
+  }
+
+  // Not authenticated or pending profile completion -> Show Full Page Auth
   if (!user || needsProfileCompletion) {
     return (
       <>
@@ -202,11 +529,13 @@ function AppContent() {
         hasUnreadMessages={hasUnreadMessages}
         hasUnreadNotifications={unreadNotificationsCount > 0}
         unreadNotificationsCount={unreadNotificationsCount}
+        hasUnreadRequests={myIncomingRequests.length > 0}
         onNavigateHome={() => setCurrentView('home')}
         onNavigateFriends={() => setCurrentView('friends')}
         onNavigateProfile={handleNavigateProfile}
         onNavigateMessages={() => setCurrentView('messages')}
         onNavigateNotifications={() => setCurrentView('notifications')}
+        onNavigateSettings={() => setCurrentView('settings')}
         onSelectUser={handleSelectUser}
         onShowToast={addToast}
         onInteractionAttempt={handleInteractionNotice}
@@ -221,6 +550,7 @@ function AppContent() {
             hasUnreadMessages={hasUnreadMessages}
             hasUnreadNotifications={unreadNotificationsCount > 0}
             unreadNotificationsCount={unreadNotificationsCount}
+            hasUnreadRequests={myIncomingRequests.length > 0}
             onViewChange={(view) => {
               if (view === 'profile') {
                 handleNavigateProfile();
@@ -239,30 +569,40 @@ function AppContent() {
             <div className="flex-1 min-w-0">
               <HomeFeed
                 myFollowing={myFollowing}
+                allBlockedUids={allBlockedUids}
                 onOpenStoryViewer={(groups, startIndex) => {
                   setStoryViewerData({ groups, startIndex });
                 }}
                 onOpenStoryCreator={() => setIsStoryCreatorOpen(true)}
                 onOpenPostCreator={() => setIsPostCreatorOpen(true)}
                 onSelectUser={handleSelectUser}
+                onSelectHashtag={handleSelectHashtag}
                 onNavigateFriends={() => setCurrentView('friends')}
                 onShowToast={addToast}
                 onOpenComments={handleOpenComments}
                 onSharePost={(p) => setSharingPost(p)}
                 onOpenEngagements={(post, tab) => setEngagementsModalState({ post, initialTab: tab })}
+                onOpenReport={handleOpenReport}
+                onOpenBlock={handleOpenBlock}
+                allUsers={allUsers}
               />
             </div>
 
-            {/* Right Column: Suggestions Sidebar OR Post Comments Panel (replaces suggestions column as requested) */}
+            {/* Right Column: Suggestions Sidebar OR Post Comments Panel */}
             <div className="hidden lg:block border-l border-gray-100 sticky top-[68px] h-[calc(100vh-68px)] overflow-hidden">
               {activeCommentPost ? (
                 <PostCommentsPanel
                   post={activeCommentPost}
                   onClose={() => setActiveCommentPost(null)}
                   onSelectUser={handleSelectUser}
+                  onSelectHashtag={handleSelectHashtag}
+                  allUsers={allUsers}
+                  myFollowing={myFollowing}
                   onShowToast={addToast}
                   isSidebar={true}
                   onOpenEngagements={(post, tab) => setEngagementsModalState({ post, initialTab: tab })}
+                  onOpenReport={handleOpenReport}
+                  onOpenBlock={handleOpenBlock}
                 />
               ) : (
                 <div className="h-full overflow-y-auto">
@@ -271,6 +611,20 @@ function AppContent() {
               )}
             </div>
           </>
+        ) : currentView === 'hashtag' && selectedHashtag ? (
+          <div className="flex-1 min-w-0 bg-[#F8FAFC] min-h-[calc(100vh-68px)]">
+            <HashtagView
+              tagName={selectedHashtag}
+              onBack={() => {
+                setCurrentView('home');
+                if (typeof window !== 'undefined') {
+                  window.history.pushState({}, '', '/');
+                }
+              }}
+              onOpenPost={handleOpenComments}
+              onSelectUser={handleSelectUser}
+            />
+          </div>
         ) : currentView === 'friends' ? (
           <div className="flex-1 min-w-0">
             <FriendsView
@@ -279,6 +633,8 @@ function AppContent() {
               myFollowing={myFollowing}
               myFollowers={myFollowers}
               allFollows={allFollows}
+              myIncomingRequests={myIncomingRequests}
+              myOutgoingRequests={myOutgoingRequests}
               onShowToast={addToast}
               onSelectUser={handleSelectUser}
               onOpenSearch={() => {
@@ -295,10 +651,26 @@ function AppContent() {
               currentUserProfile={profile}
               myFollowing={myFollowing}
               myFollowers={myFollowers}
+              myBlockedUsers={myBlockedUsers}
+              usersWhoBlockedMe={usersWhoBlockedMe}
+              myOutgoingRequests={myOutgoingRequests}
               onShowToast={addToast}
               onOpenPostCreator={() => setIsPostCreatorOpen(true)}
               onSelectUser={handleSelectUser}
               onOpenEngagements={(post, tab) => setEngagementsModalState({ post, initialTab: tab })}
+              onNavigateSettings={() => setCurrentView('settings')}
+              onOpenReport={handleOpenReport}
+              onOpenBlock={handleOpenBlock}
+            />
+          </div>
+        ) : currentView === 'settings' ? (
+          <div className="flex-1 min-w-0 bg-[#F9FBFC] min-h-[calc(100vh-68px)]">
+            <SettingsView
+              currentUserProfile={profile}
+              allUsers={allUsers}
+              onProfileUpdated={(updated) => setProfile(updated)}
+              onLogoutRequested={logout}
+              onShowToast={addToast}
             />
           </div>
         ) : currentView === 'messages' ? (
@@ -327,6 +699,7 @@ function AppContent() {
               allUsers={allUsers}
               myFollowing={myFollowing}
               myFollowers={myFollowers}
+              myOutgoingRequests={myOutgoingRequests}
               allFollows={allFollows}
               onOpenPostDetail={handleOpenComments}
               onSelectUser={handleSelectUser}
@@ -433,6 +806,8 @@ function AppContent() {
           currentUid={user.uid}
           onClose={() => setStoryViewerData(null)}
           onShowToast={addToast}
+          onOpenReport={handleOpenReport}
+          onOpenBlock={handleOpenBlock}
         />
       )}
 
@@ -474,9 +849,14 @@ function AppContent() {
           post={activeCommentModalPost}
           onClose={() => setActiveCommentModalPost(null)}
           onSelectUser={handleSelectUser}
+          onSelectHashtag={handleSelectHashtag}
+          allUsers={allUsers}
+          myFollowing={myFollowing}
           onShowToast={addToast}
           isModal={true}
           onOpenEngagements={(post, tab) => setEngagementsModalState({ post, initialTab: tab })}
+          onOpenReport={handleOpenReport}
+          onOpenBlock={handleOpenBlock}
         />
       )}
 
@@ -505,6 +885,44 @@ function AppContent() {
         onSelectUser={handleSelectUser}
         onShowToast={addToast}
       />
+
+      {/* Report Content Modal */}
+      {reportModalState?.isOpen && (
+        <ReportModal
+          isOpen={true}
+          targetType={reportModalState.targetType}
+          targetId={reportModalState.targetId}
+          currentUid={user?.uid}
+          onClose={() => setReportModalState(null)}
+          onShowToast={addToast}
+          onOpenAuthModal={() =>
+            setAuthModalState({
+              isOpen: true,
+              tab: 'login',
+              paywallMessage: 'Faça login para denunciar um conteúdo.',
+            })
+          }
+        />
+      )}
+
+      {/* Block User Modal */}
+      {blockModalState?.isOpen && (
+        <BlockModal
+          isOpen={true}
+          targetUid={blockModalState.targetUid}
+          targetUsername={blockModalState.targetUsername}
+          currentUid={user?.uid}
+          onClose={() => setBlockModalState(null)}
+          onShowToast={addToast}
+          onOpenAuthModal={() =>
+            setAuthModalState({
+              isOpen: true,
+              tab: 'login',
+              paywallMessage: 'Faça login para bloquear um usuário.',
+            })
+          }
+        />
+      )}
 
       {/* Toast Notification Stack */}
       <ToastContainer toasts={toasts} onDismiss={removeToast} />

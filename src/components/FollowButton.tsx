@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Loader2 } from 'lucide-react';
-import { toggleFollowUser } from '../services/socialService';
+import { toggleFollowUser, createFollowRequest, cancelFollowRequest } from '../services/socialService';
 import { useAuth } from '../context/AuthContext';
 
 interface FollowButtonProps {
@@ -9,6 +9,8 @@ interface FollowButtonProps {
   targetUsername: string;
   iFollow: boolean;
   followsMe: boolean;
+  isPrivate?: boolean;
+  isRequested?: boolean;
   size?: 'sm' | 'md';
   onShowToast?: (msg: string, type?: 'info' | 'success' | 'error') => void;
   onActionComplete?: () => void;
@@ -20,6 +22,8 @@ export function FollowButton({
   targetUsername,
   iFollow,
   followsMe,
+  isPrivate = false,
+  isRequested = false,
   size = 'md',
   onShowToast,
   onActionComplete,
@@ -34,11 +38,39 @@ export function FollowButton({
     return null;
   }
 
-  const handleButtonClick = (e: React.MouseEvent) => {
+  const handleButtonClick = async (e: React.MouseEvent) => {
     e.stopPropagation();
     if (iFollow) {
       // Prompt confirmation to unfollow
       setShowConfirmModal(true);
+    } else if (isPrivate) {
+      if (isRequested) {
+        // Cancel request
+        setIsLoading(true);
+        try {
+          await cancelFollowRequest(currentUid, targetUid);
+          onShowToast?.(`Solicitação para @${targetUsername} cancelada.`, 'info');
+          onActionComplete?.();
+        } catch (err) {
+          console.error(err);
+          onShowToast?.('Erro ao cancelar solicitação.', 'error');
+        } finally {
+          setIsLoading(false);
+        }
+      } else {
+        // Send request
+        setIsLoading(true);
+        try {
+          await createFollowRequest(currentUid, targetUid, profile || undefined);
+          onShowToast?.(`Solicitação enviada para @${targetUsername}!`, 'success');
+          onActionComplete?.();
+        } catch (err) {
+          console.error(err);
+          onShowToast?.('Erro ao enviar solicitação.', 'error');
+        } finally {
+          setIsLoading(false);
+        }
+      }
     } else {
       executeFollowToggle(false);
     }
@@ -103,6 +135,43 @@ export function FollowButton({
             'Seguindo'
           )}
         </button>
+      ) : isPrivate ? (
+        // State: PRIVATE ACCOUNT AND NOT FOLLOWING YET
+        isRequested ? (
+          <button
+            type="button"
+            disabled={isLoading}
+            onClick={handleButtonClick}
+            onMouseEnter={() => setIsHovered(true)}
+            onMouseLeave={() => setIsHovered(false)}
+            className={`${sizeClasses} font-semibold rounded-xl border transition-all cursor-pointer flex items-center justify-center gap-1.5 active:scale-98 ${
+              isHovered
+                ? 'border-rose-300 text-rose-600 bg-rose-50/70 shadow-xs'
+                : 'border-gray-200 text-gray-700 bg-gray-50 hover:border-gray-300 shadow-2xs'
+            }`}
+          >
+            {isLoading ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-gray-500" />
+            ) : isHovered ? (
+              'Cancelar solicitação'
+            ) : (
+              'Solicitado'
+            )}
+          </button>
+        ) : (
+          <button
+            type="button"
+            disabled={isLoading}
+            onClick={handleButtonClick}
+            className={`${sizeClasses} font-semibold rounded-xl bg-[#548687] hover:bg-[#436e6f] text-white transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-xs active:scale-98`}
+          >
+            {isLoading ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
+            ) : (
+              'Solicitar'
+            )}
+          </button>
+        )
       ) : followsMe ? (
         // State: FOLLOWS ME, BUT I DON'T FOLLOW BACK
         <button

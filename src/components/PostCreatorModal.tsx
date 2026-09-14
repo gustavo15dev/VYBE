@@ -21,6 +21,7 @@ import { UserProfile } from '../types/user';
 import { MediaType, PostCollaborator } from '../types/social';
 import { createPost } from '../services/socialService';
 import { optimizeImage, getBase64SizeBytes } from '../utils/mediaOptimizer';
+import { TextWithAutocomplete } from './TextWithAutocomplete';
 
 interface PostCreatorModalProps {
   author: UserProfile;
@@ -264,6 +265,7 @@ export function PostCreatorModal({
         mediaUrls,
         mediaUrl: mediaUrls[0] || '',
         collaborators,
+        allUsers,
       });
 
       if (onShowToast) {
@@ -594,18 +596,21 @@ export function PostCreatorModal({
                   </div>
                 </div>
 
-                {/* Caption Textarea */}
+                {/* Caption Textarea with Autocomplete */}
                 <div>
-                  <textarea
+                  <TextWithAutocomplete
                     id="input-post-caption"
                     value={caption}
-                    onChange={(e) => setCaption(e.target.value)}
+                    onChange={setCaption}
                     placeholder={
                       selectedType === 'text'
                         ? 'O que você está pensando? Escreva sua publicação...'
                         : 'Escreva uma legenda...'
                     }
                     rows={selectedType === 'text' ? 7 : 4}
+                    isTextarea={true}
+                    allUsers={allUsers}
+                    myFollowing={myFollowers}
                     className="w-full resize-none focus:outline-none text-sm text-gray-800 placeholder-gray-400 bg-transparent leading-relaxed"
                   />
                 </div>

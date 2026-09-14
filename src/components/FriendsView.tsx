@@ -1,7 +1,9 @@
 import { useState, useMemo } from 'react';
 import { UserProfile } from '../types/user';
 import { FollowButton } from './FollowButton';
-import { Users, UserCheck, Sparkles, UserPlus, Search } from 'lucide-react';
+import { FollowRequestItem } from '../types/social';
+import { Users, UserCheck, Sparkles, UserPlus, Search, Check, X as XIcon, Clock } from 'lucide-react';
+import { respondFollowRequest } from '../services/socialService';
 
 interface FriendsViewProps {
   currentUid: string;
@@ -9,12 +11,14 @@ interface FriendsViewProps {
   myFollowing: Set<string>;
   myFollowers: Set<string>;
   allFollows: { followerUid: string; followingUid: string }[];
+  myIncomingRequests?: FollowRequestItem[];
+  myOutgoingRequests?: Set<string>;
   onShowToast?: (msg: string, type?: 'info' | 'success' | 'error') => void;
   onOpenSearch?: () => void;
   onSelectUser?: (uid: string) => void;
 }
 
-type TabType = 'following' | 'followers' | 'suggestions';
+type TabType = 'following' | 'followers' | 'suggestions' | 'requests';
 
 export function FriendsView({
   currentUid,
@@ -22,6 +26,8 @@ export function FriendsView({
   myFollowing,
   myFollowers,
   allFollows,
+  myIncomingRequests = [],
+  myOutgoingRequests = new Set(),
   onShowToast,
   onOpenSearch,
   onSelectUser,
@@ -120,6 +126,8 @@ export function FriendsView({
       ? followingList.length
       : activeTab === 'followers'
       ? followersList.length
+      : activeTab === 'requests'
+      ? myIncomingRequests.length
       : suggestionsList.length;
 
   return (
@@ -198,6 +206,30 @@ export function FriendsView({
             )}
           </div>
           {activeTab === 'suggestions' && (
+            <div className="absolute bottom-0 left-0 right-0 h-[2.5px] bg-[#548687] rounded-full" />
+          )}
+        </button>
+
+        {/* Tab 4: Solicitações */}
+        <button
+          id="tab-friends-requests"
+          type="button"
+          onClick={() => setActiveTab('requests')}
+          className={`pb-3.5 relative transition-colors whitespace-nowrap cursor-pointer ${
+            activeTab === 'requests'
+              ? 'text-gray-900 font-bold'
+              : 'text-gray-500 hover:text-gray-800'
+          }`}
+        >
+          <div className="flex items-center gap-1.5">
+            <span>Solicitações</span>
+            {myIncomingRequests.length > 0 && (
+              <span className="bg-rose-500 text-white text-[10px] px-1.5 rounded-full min-w-[18px] text-center">
+                {myIncomingRequests.length}
+              </span>
+            )}
+          </div>
+          {activeTab === 'requests' && (
             <div className="absolute bottom-0 left-0 right-0 h-[2.5px] bg-[#548687] rounded-full" />
           )}
         </button>
@@ -283,6 +315,8 @@ export function FriendsView({
                         targetUsername={targetUser.username}
                         iFollow={true}
                         followsMe={followsMeBack}
+                        isPrivate={targetUser.conta_privada}
+                        isRequested={myOutgoingRequests.has(targetUser.uid)}
                         onShowToast={onShowToast}
                       />
                     </div>
@@ -368,6 +402,8 @@ export function FriendsView({
                         targetUsername={targetUser.username}
                         iFollow={iFollow}
                         followsMe={true}
+                        isPrivate={targetUser.conta_privada}
+                        isRequested={myOutgoingRequests.has(targetUser.uid)}
                         onShowToast={onShowToast}
                       />
                     </div>
@@ -452,6 +488,8 @@ export function FriendsView({
                         targetUsername={targetUser.username}
                         iFollow={false}
                         followsMe={followsMe}
+                        isPrivate={targetUser.conta_privada}
+                        isRequested={myOutgoingRequests.has(targetUser.uid)}
                         onShowToast={onShowToast}
                       />
                     </div>
@@ -470,6 +508,117 @@ export function FriendsView({
                   {allUsers.filter((u) => u.uid !== currentUid && !u.uid.startsWith('seed_')).length === 0
                     ? 'Ainda não há outros usuários cadastrados na VYBE. Assim que novas pessoas criarem conta, elas aparecerão aqui!'
                     : 'Você já segue todos os perfis cadastrados na VYBE!'}
+                </p>
+              </div>
+            )}
+          </>
+        )}
+
+        {/* LIST RENDERING: REQUESTS */}
+        {activeTab === 'requests' && (
+          <>
+            {myIncomingRequests.length > 0 ? (
+              myIncomingRequests.map((req) => {
+                const requester = allUsers.find((u) => u.uid === req.solicitante_id);
+                const requesterUsername = requester?.username || 'usuario';
+                const requesterDisplayName = requester?.displayName || requesterUsername;
+                const requesterPhotoURL = requester?.photoURL || '';
+
+                const initial =
+                  requesterDisplayName?.[0]?.toUpperCase() ||
+                  requesterUsername?.[0]?.toUpperCase() ||
+                  'U';
+
+                return (
+                  <div
+                    key={req.id}
+                    className="flex items-center justify-between p-3 sm:p-3.5 rounded-2xl hover:bg-[#F8FAFA] transition-colors border border-transparent hover:border-gray-100"
+                  >
+                    {/* User Info Left */}
+                    <div
+                      onClick={() => onSelectUser?.(req.solicitante_id)}
+                      className="flex items-center gap-3.5 min-w-0 cursor-pointer group/user flex-1"
+                    >
+                      <div className="w-12 h-12 rounded-full bg-[#E1EEEE] text-[#426F70] flex items-center justify-center font-bold text-base overflow-hidden shrink-0 border border-gray-100 group-hover/user:scale-105 transition-transform relative">
+                        {requesterPhotoURL ? (
+                          <img
+                            src={requesterPhotoURL}
+                            alt={requesterUsername}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <span>{initial}</span>
+                        )}
+                        <div className="absolute -bottom-1 -right-1 bg-white rounded-full p-[2px]">
+                          <div className="w-4 h-4 bg-[#548687] rounded-full flex items-center justify-center">
+                            <Clock className="w-2.5 h-2.5 text-white" />
+                          </div>
+                        </div>
+                      </div>
+                      <div className="min-w-0">
+                        <div className="font-semibold text-gray-900 text-sm sm:text-base leading-snug truncate group-hover/user:text-[#548687] transition-colors">
+                          {requesterUsername}
+                        </div>
+                        <div className="text-xs text-gray-500 leading-none mt-1">
+                          Quer seguir você
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Action Button Right */}
+                    <div className="shrink-0 ml-3 flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          try {
+                            await respondFollowRequest({
+                              solicitanteUid: req.solicitante_id,
+                              targetUid: currentUid,
+                              action: 'recusar',
+                            });
+                          } catch (err) {
+                            console.error(err);
+                          }
+                        }}
+                        className="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 flex items-center justify-center transition-colors cursor-pointer"
+                        title="Recusar"
+                      >
+                        <XIcon className="w-4 h-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          try {
+                            await respondFollowRequest({
+                              solicitanteUid: req.solicitante_id,
+                              targetUid: currentUid,
+                              action: 'aceitar',
+                              targetProfile: allUsers.find((u) => u.uid === currentUid),
+                            });
+                            onShowToast?.(`Você aceitou a solicitação de @${requesterUsername}`, 'success');
+                          } catch (err) {
+                            console.error(err);
+                          }
+                        }}
+                        className="px-4 py-1.5 rounded-xl bg-[#548687] hover:bg-[#436e6f] text-white font-semibold text-xs sm:text-sm flex items-center gap-1.5 transition-colors cursor-pointer"
+                      >
+                        <Check className="w-4 h-4" />
+                        <span>Aceitar</span>
+                      </button>
+                    </div>
+                  </div>
+                );
+              })
+            ) : (
+              <div className="text-center py-12 px-4 bg-[#F9FBFC] rounded-3xl border border-dashed border-gray-200">
+                <Clock className="w-10 h-10 text-gray-300 mx-auto mb-3" />
+                <h3 className="font-bold text-gray-800 text-sm">
+                  Sem novas solicitações
+                </h3>
+                <p className="text-xs text-gray-500 mt-1 max-w-sm mx-auto">
+                  Quando uma conta privada recebe pedidos de seguidores, eles aparecem aqui.
                 </p>
               </div>
             )}

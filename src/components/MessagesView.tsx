@@ -27,6 +27,7 @@ import {
   PostItem,
 } from '../types/social';
 import { UserProfile } from '../types/user';
+import { VerifiedBadge } from './VerifiedBadge';
 import {
   subscribeConversations,
   subscribeMessages,
@@ -432,8 +433,9 @@ export function MessagesView({
 
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between">
-                        <span className="text-sm font-semibold text-gray-900 truncate">
-                          {target?.username || displayName}
+                        <span className="text-sm font-semibold text-gray-900 truncate flex items-center gap-1">
+                          <span>{target?.username || displayName}</span>
+                          <VerifiedBadge verified={target?.verificado} size={13} />
                         </span>
                         <span className="text-xs text-gray-400 shrink-0">
                           {formatShortTime(conv.atualizado_em)}
@@ -521,11 +523,14 @@ export function MessagesView({
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between">
                         <span
-                          className={`text-sm truncate ${
+                          className={`text-sm truncate flex items-center gap-1 ${
                             isUnread ? 'font-bold text-gray-900' : 'font-semibold text-gray-900'
                           }`}
                         >
-                          {displayName}
+                          <span>{displayName}</span>
+                          {!isGroup && target && (
+                            <VerifiedBadge verified={target.verificado} size={13} />
+                          )}
                         </span>
                         <span className="text-xs text-gray-400 shrink-0">
                           {formatShortTime(conv.atualizado_em)}
@@ -746,9 +751,10 @@ export function MessagesView({
                     ) : (
                       <h3
                         onClick={() => otherUser && onSelectUser?.(otherUser.uid)}
-                        className="text-base font-bold text-gray-900 truncate cursor-pointer hover:underline"
+                        className="text-base font-bold text-gray-900 truncate cursor-pointer hover:underline flex items-center gap-1"
                       >
-                        {otherUser?.username || 'Usuário'}
+                        <span>{otherUser?.username || 'Usuário'}</span>
+                        <VerifiedBadge verified={otherUser?.verificado} size={14} />
                       </h3>
                     )}
                     <p className="text-xs text-gray-400 truncate">

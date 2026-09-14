@@ -97,5 +97,10 @@ service cloud.firestore {
     match /solicitacoes_seguir/{reqId} {
       allow read, write: if request.auth != null;
     }
+
+    // Solicitações de verificação (Selo de verificado)
+    match /solicitacoes_verificacao/{reqId} {
+      allow read, write: if request.auth != null;
+    }
   }
 }

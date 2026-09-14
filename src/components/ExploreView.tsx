@@ -23,6 +23,7 @@ import {
   toggleFollowUser,
 } from '../services/socialService';
 import { FollowButton } from './FollowButton';
+import { VerifiedBadge } from './VerifiedBadge';
 
 interface ExploreViewProps {
   allUsers: UserProfile[];
@@ -369,8 +370,9 @@ export function ExploreView({
                   </div>
 
                   {/* Name / Username */}
-                  <h4 className="font-bold text-gray-900 text-xs sm:text-sm truncate max-w-[130px] leading-tight">
-                    {u.username}
+                  <h4 className="font-bold text-gray-900 text-xs sm:text-sm truncate max-w-[130px] leading-tight flex items-center justify-center gap-1">
+                    <span>{u.username}</span>
+                    <VerifiedBadge verified={u.verificado} size={12} />
                   </h4>
                   {u.displayName && u.displayName !== u.username && (
                     <p className="text-[11px] text-gray-500 truncate max-w-[130px]">
@@ -444,8 +446,9 @@ export function ExploreView({
                     <p className="text-xs sm:text-sm font-medium line-clamp-4 leading-relaxed">
                       {p.content}
                     </p>
-                    <span className="text-[10px] text-gray-400">
-                      @{p.authorUsername}
+                    <span className="text-[10px] text-gray-400 flex items-center gap-1">
+                      <span>@{p.authorUsername}</span>
+                      <VerifiedBadge uid={p.authorUid} allUsers={allUsers} size={11} />
                     </span>
                   </div>
                 )}
@@ -475,8 +478,9 @@ export function ExploreView({
 
                 {/* Bottom Left Pill Tag for Author (Mockup: 'rafa.oliveira') */}
                 <div className="absolute bottom-2.5 left-2.5 z-10">
-                  <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] sm:text-xs font-semibold bg-white/90 hover:bg-white text-gray-900 shadow-xs backdrop-blur-xs transition-colors">
-                    {p.authorUsername}
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] sm:text-xs font-semibold bg-white/90 hover:bg-white text-gray-900 shadow-xs backdrop-blur-xs transition-colors">
+                    <span>{p.authorUsername}</span>
+                    <VerifiedBadge uid={p.authorUid} allUsers={allUsers} size={11} />
                   </span>
                 </div>
 

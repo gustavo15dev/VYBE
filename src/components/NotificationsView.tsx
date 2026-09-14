@@ -17,6 +17,8 @@ import {
   AggregatedNotification,
   PostItem,
 } from '../types/social';
+import { UserProfile } from '../types/user';
+import { VerifiedBadge } from './VerifiedBadge';
 import {
   subscribeNotifications,
   markNotificationAsRead,
@@ -33,6 +35,7 @@ import {
 } from '../utils/notificationUtils';
 
 interface NotificationsViewProps {
+  allUsers?: UserProfile[];
   myFollowing: Set<string>;
   onSelectUser?: (uid: string) => void;
   onOpenPostDetail?: (post: PostItem) => void;
@@ -41,6 +44,7 @@ interface NotificationsViewProps {
 }
 
 export function NotificationsView({
+  allUsers = [],
   myFollowing,
   onSelectUser,
   onOpenPostDetail,
@@ -310,9 +314,10 @@ export function NotificationsView({
                 e.stopPropagation();
                 onSelectUser?.(principal.uid);
               }}
-              className="font-bold text-gray-900 hover:text-[#548687] transition-colors cursor-pointer"
+              className="inline-flex items-center gap-1 font-bold text-gray-900 hover:text-[#548687] transition-colors cursor-pointer align-middle"
             >
-              {principal.username}
+              <span>{principal.username}</span>
+              <VerifiedBadge uid={principal.uid} allUsers={allUsers} size={12} />
             </span>
 
             {/* If aggregated multiple users */}

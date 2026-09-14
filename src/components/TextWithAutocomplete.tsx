@@ -205,11 +205,8 @@ export function TextWithAutocomplete({
                   <div className="w-8 h-8 rounded-xl bg-[#E1EEEE] text-[#426F70] flex items-center justify-center font-bold text-sm shrink-0">
                     <Hash className="w-4 h-4" />
                   </div>
-                  <div className="min-w-0 flex-1">
+                  <div className="min-w-0 flex-1 flex items-center">
                     <p className="text-xs font-bold text-gray-900 truncate">#{item.nome}</p>
-                    <p className="text-[11px] text-gray-500 font-medium">
-                      {formatHashtagPostCount(item.contagem_posts)} publicações
-                    </p>
                   </div>
                 </button>
               ))}

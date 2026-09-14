@@ -26,6 +26,7 @@ import {
 import { UserStoriesGroup, PostItem, ReportTargetType } from '../types/social';
 import { UserProfile } from '../types/user';
 import { FormattedText } from './FormattedText';
+import { VerifiedBadge } from './VerifiedBadge';
 import {
   subscribeActiveStories,
   subscribePosts,
@@ -52,6 +53,8 @@ interface HomeFeedProps {
   onOpenEngagements?: (post: PostItem, tab: 'curtidas' | 'visualizacoes') => void;
   onOpenReport?: (type: ReportTargetType, id: string) => void;
   onOpenBlock?: (targetUid: string, targetUsername: string) => void;
+  onOpenEditPost?: (post: PostItem) => void;
+  onConfirmDeletePost?: (post: PostItem) => void;
   allUsers?: UserProfile[];
 }
 
@@ -70,6 +73,8 @@ export function HomeFeed({
   onOpenEngagements,
   onOpenReport,
   onOpenBlock,
+  onOpenEditPost,
+  onConfirmDeletePost,
   allUsers = [],
 }: HomeFeedProps) {
   const { user, profile } = useAuth();
@@ -222,7 +227,7 @@ export function HomeFeed({
       */}
       <div
         id="stories-carousel-container"
-        className="flex items-center gap-4 justify-start mb-8 overflow-x-auto pb-2 pt-1 scrollbar-none"
+        className="flex items-center gap-4 justify-start mb-8 overflow-x-auto pb-3 pt-2 px-1 scrollbar-none"
       >
         {/* Story Item 1: Current User (Your Story) */}
         <div className="flex flex-col items-center gap-1.5 shrink-0 group">
@@ -231,24 +236,30 @@ export function HomeFeed({
               id="btn-current-user-story"
               type="button"
               onClick={handleMyStoryClick}
-              className={`relative w-15 h-15 rounded-full p-[2.5px] transition-transform group-hover:scale-105 cursor-pointer flex items-center justify-center ${
-                !hasMyStories
-                  ? 'border border-dashed border-gray-300'
-                  : hasUnseenMyStories
-                  ? 'ring-2 ring-[#548687] ring-offset-2 bg-gradient-to-tr from-[#548687] to-[#7BB2B3]'
-                  : 'ring-2 ring-gray-300 ring-offset-2 bg-gray-200'
-              }`}
+              className="relative w-15 h-15 rounded-full transition-transform group-hover:scale-105 cursor-pointer flex items-center justify-center focus:outline-none"
             >
-              <div className="w-full h-full rounded-full bg-[#548687] text-white flex items-center justify-center font-bold text-base overflow-hidden border-2 border-white shadow-2xs">
-                {profile?.photoURL ? (
-                  <img
-                    src={profile.photoURL}
-                    alt="Seu story"
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <span>{myInitial}</span>
-                )}
+              <div
+                className={`w-full h-full rounded-full flex items-center justify-center p-[2px] ${
+                  !hasMyStories
+                    ? 'border border-dashed border-gray-300 bg-transparent'
+                    : hasUnseenMyStories
+                    ? 'bg-gradient-to-tr from-[#548687] to-[#7BB2B3]'
+                    : 'bg-gray-300'
+                }`}
+              >
+                <div className="w-full h-full rounded-full bg-white p-[2.5px] flex items-center justify-center">
+                  <div className="w-full h-full rounded-full bg-[#548687] text-white flex items-center justify-center font-bold text-base overflow-hidden">
+                    {profile?.photoURL ? (
+                      <img
+                        src={profile.photoURL}
+                        alt="Seu story"
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <span>{myInitial}</span>
+                    )}
+                  </div>
+                </div>
               </div>
             </button>
 
@@ -288,22 +299,24 @@ export function HomeFeed({
               className="flex flex-col items-center gap-1.5 shrink-0 group cursor-pointer focus:outline-none"
             >
               <div
-                className={`w-15 h-15 rounded-full p-[2.5px] transition-all group-hover:scale-105 flex items-center justify-center ${
+                className={`w-15 h-15 rounded-full transition-all group-hover:scale-105 flex items-center justify-center p-[2px] ${
                   group.hasUnseen
-                    ? 'ring-2 ring-[#548687] ring-offset-2 bg-gradient-to-tr from-[#548687] to-[#7BB2B3]'
-                    : 'ring-2 ring-gray-300 ring-offset-2 bg-gray-200'
+                    ? 'bg-gradient-to-tr from-[#548687] to-[#7BB2B3]'
+                    : 'bg-gray-300'
                 }`}
               >
-                <div className="w-full h-full rounded-full bg-[#E5ECEC] text-[#345859] flex items-center justify-center font-semibold text-sm overflow-hidden border-2 border-white shadow-2xs">
-                  {group.authorPhotoURL ? (
-                    <img
-                      src={group.authorPhotoURL}
-                      alt={group.authorUsername}
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <span>{userInit}</span>
-                  )}
+                <div className="w-full h-full rounded-full bg-white p-[2.5px] flex items-center justify-center">
+                  <div className="w-full h-full rounded-full bg-[#E5ECEC] text-[#345859] flex items-center justify-center font-semibold text-sm overflow-hidden">
+                    {group.authorPhotoURL ? (
+                      <img
+                        src={group.authorPhotoURL}
+                        alt={group.authorUsername}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <span>{userInit}</span>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -594,13 +607,16 @@ export function HomeFeed({
                           <button
                             type="button"
                             onClick={() => onSelectUser?.(post.authorUid)}
-                            className="font-semibold hover:text-[#548687] transition-colors cursor-pointer"
+                            className="font-semibold hover:text-[#548687] transition-colors cursor-pointer flex items-center gap-1"
                           >
-                            {post.authorDisplayName || post.authorUsername}
+                            <span>{post.authorDisplayName || post.authorUsername}</span>
+                            <VerifiedBadge uid={post.authorUid} allUsers={allUsers} size={13} />
                           </button>
                           {/* If they have a display name different from username, show username too */}
                           {post.authorDisplayName && post.authorDisplayName !== post.authorUsername && (
-                            <span className="text-xs text-gray-500 font-normal">@{post.authorUsername}</span>
+                            <span className="text-xs text-gray-500 font-normal flex items-center gap-1">
+                              @{post.authorUsername}
+                            </span>
                           )}
                           <span className="text-xs text-gray-400 font-normal">
                             • {formatTime(post.createdAt)}
@@ -633,30 +649,62 @@ export function HomeFeed({
 
                       {activePostMenuId === post.id && (
                         <div className="absolute right-0 top-full mt-1 w-48 bg-white border border-gray-100 rounded-2xl shadow-xl z-50 py-1 animate-in fade-in zoom-in-95">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setActivePostMenuId(null);
-                              onOpenReport?.('post', post.id);
-                            }}
-                            className="w-full px-4 py-2.5 text-left text-xs font-semibold text-gray-700 hover:bg-gray-50 flex items-center gap-2 transition-colors cursor-pointer"
-                          >
-                            <Flag className="w-4 h-4 text-amber-600 shrink-0" />
-                            <span>Denunciar publicação</span>
-                          </button>
+                          {user?.uid === post.authorUid ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setActivePostMenuId(null);
+                                  onOpenEditPost?.(post);
+                                }}
+                                className="w-full px-4 py-2.5 text-left text-xs font-semibold text-gray-700 hover:bg-gray-50 flex items-center gap-2 transition-colors cursor-pointer"
+                              >
+                                <svg className="w-4 h-4 text-gray-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                                </svg>
+                                <span>Editar publicação</span>
+                              </button>
 
-                          {user?.uid !== post.authorUid && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setActivePostMenuId(null);
-                                onOpenBlock?.(post.authorUid, post.authorUsername);
-                              }}
-                              className="w-full px-4 py-2.5 text-left text-xs font-semibold text-rose-600 hover:bg-rose-50 flex items-center gap-2 transition-colors cursor-pointer"
-                            >
-                              <UserX className="w-4 h-4 text-rose-600 shrink-0" />
-                              <span>Bloquear @{post.authorUsername}</span>
-                            </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setActivePostMenuId(null);
+                                  onConfirmDeletePost?.(post);
+                                }}
+                                className="w-full px-4 py-2.5 text-left text-xs font-semibold text-rose-600 hover:bg-rose-50 flex items-center gap-2 transition-colors cursor-pointer"
+                              >
+                                <svg className="w-4 h-4 text-rose-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                                <span className="font-bold">Excluir publicação</span>
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setActivePostMenuId(null);
+                                  onOpenReport?.('post', post.id);
+                                }}
+                                className="w-full px-4 py-2.5 text-left text-xs font-semibold text-gray-700 hover:bg-gray-50 flex items-center gap-2 transition-colors cursor-pointer"
+                              >
+                                <Flag className="w-4 h-4 text-amber-600 shrink-0" />
+                                <span>Denunciar publicação</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setActivePostMenuId(null);
+                                  onOpenBlock?.(post.authorUid, post.authorUsername);
+                                }}
+                                className="w-full px-4 py-2.5 text-left text-xs font-semibold text-rose-600 hover:bg-rose-50 flex items-center gap-2 transition-colors cursor-pointer"
+                              >
+                                <UserX className="w-4 h-4 text-rose-600 shrink-0" />
+                                <span>Bloquear @{post.authorUsername}</span>
+                              </button>
+                            </>
                           )}
                         </div>
                       )}

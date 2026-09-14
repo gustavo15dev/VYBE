@@ -735,11 +735,7 @@ export function AuthModal({
           </div>
         )}
 
-        {/* Database real confirmation badge */}
-        <div className="mt-6 pt-4 border-t border-gray-100 flex items-center justify-center gap-1.5 text-[11px] text-gray-400">
-          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-          <span>Banco de dados Firestore ativo & sincronizado em tempo real</span>
-        </div>
+
       </div>
     );
 

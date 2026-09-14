@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { UserProfile } from '../types/user';
 import { FollowButton } from './FollowButton';
+import { VerifiedBadge } from './VerifiedBadge';
 import {
   getRecentSearches,
   saveRecentSearch,
@@ -332,8 +333,9 @@ export function Header({
                           </div>
 
                           <div className="min-w-0">
-                            <div className="font-semibold text-gray-900 text-sm leading-snug truncate group-hover/user:text-[#548687] transition-colors">
-                              {targetUser.username}
+                            <div className="font-semibold text-gray-900 text-sm leading-snug truncate group-hover/user:text-[#548687] transition-colors flex items-center gap-1.5">
+                              <span>{targetUser.username}</span>
+                              <VerifiedBadge verified={targetUser.verificado} size={13} />
                             </div>
                             <div className="text-xs text-gray-500 leading-tight mt-0.5 truncate">
                               {mutualCount > 0 ? (

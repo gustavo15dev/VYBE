@@ -10,11 +10,14 @@ import { ProfileView } from './components/ProfileView';
 import { StoryViewer } from './components/StoryViewer';
 import { StoryCreatorModal } from './components/StoryCreatorModal';
 import { PostCreatorModal } from './components/PostCreatorModal';
+import { PostEditModal } from './components/PostEditModal';
+import { DeletePostConfirmModal } from './components/DeletePostConfirmModal';
 import { PostCommentsPanel } from './components/PostCommentsPanel';
 import { MessagesView } from './components/MessagesView';
 import { NotificationsView } from './components/NotificationsView';
 import { ExploreView } from './components/ExploreView';
 import { SettingsView } from './components/SettingsView';
+import { AdminPanel } from './components/AdminPanel';
 import { SharePostModal } from './components/SharePostModal';
 import { PostEngagementsModal } from './components/PostEngagementsModal';
 import { PublicPostView } from './components/PublicPostView';
@@ -43,6 +46,36 @@ import { Loader2, Home, Users, MessageCircle, Bell, Compass, User } from 'lucide
 function AppContent() {
   const { user, profile, loading, needsProfileCompletion, setProfile, logout } = useAuth();
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
+  const [isAdminPanelOpen, setIsAdminPanelOpen] = useState(false);
+
+  useEffect(() => {
+    let count = 0;
+    let timer: NodeJS.Timeout;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.key === '5') {
+        e.preventDefault();
+        count++;
+
+        clearTimeout(timer);
+        timer = setTimeout(() => {
+          count = 0;
+        }, 3000); // Reset count after 3 seconds of inactivity
+
+        if (count >= 5) {
+          count = 0;
+          setIsAdminPanelOpen(true);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      clearTimeout(timer);
+    };
+  }, []);
+
   const [currentView, setCurrentView] = useState<AppView>('home');
   const [profileTargetUid, setProfileTargetUid] = useState<string | null>(null);
 
@@ -168,6 +201,33 @@ function AppContent() {
     targetUid: string;
     targetUsername: string;
   } | null>(null);
+
+  const [editingPost, setEditingPost] = useState<PostItem | null>(null);
+  const [deletingPost, setDeletingPost] = useState<PostItem | null>(null);
+
+  const handleOpenEditPost = (post: PostItem) => {
+    if (!user?.uid) {
+      setAuthModalState({
+        isOpen: true,
+        tab: 'login',
+        paywallMessage: 'Faça login para editar uma publicação.',
+      });
+      return;
+    }
+    setEditingPost(post);
+  };
+
+  const handleConfirmDeletePost = (post: PostItem) => {
+    if (!user?.uid) {
+      setAuthModalState({
+        isOpen: true,
+        tab: 'login',
+        paywallMessage: 'Faça login para excluir uma publicação.',
+      });
+      return;
+    }
+    setDeletingPost(post);
+  };
 
   const handleOpenReport = (type: ReportTargetType, id: string) => {
     if (!user?.uid) {
@@ -584,6 +644,8 @@ function AppContent() {
                 onOpenEngagements={(post, tab) => setEngagementsModalState({ post, initialTab: tab })}
                 onOpenReport={handleOpenReport}
                 onOpenBlock={handleOpenBlock}
+                onOpenEditPost={handleOpenEditPost}
+                onConfirmDeletePost={handleConfirmDeletePost}
                 allUsers={allUsers}
               />
             </div>
@@ -603,6 +665,8 @@ function AppContent() {
                   onOpenEngagements={(post, tab) => setEngagementsModalState({ post, initialTab: tab })}
                   onOpenReport={handleOpenReport}
                   onOpenBlock={handleOpenBlock}
+                  onOpenEditPost={handleOpenEditPost}
+                  onConfirmDeletePost={handleConfirmDeletePost}
                 />
               ) : (
                 <div className="h-full overflow-y-auto">
@@ -661,6 +725,8 @@ function AppContent() {
               onNavigateSettings={() => setCurrentView('settings')}
               onOpenReport={handleOpenReport}
               onOpenBlock={handleOpenBlock}
+              onOpenEditPost={handleOpenEditPost}
+              onConfirmDeletePost={handleConfirmDeletePost}
             />
           </div>
         ) : currentView === 'settings' ? (
@@ -686,6 +752,7 @@ function AppContent() {
         ) : currentView === 'notifications' ? (
           <div className="flex-1 min-w-0 bg-white min-h-[calc(100vh-68px)]">
             <NotificationsView
+              allUsers={allUsers}
               myFollowing={myFollowing}
               onSelectUser={handleSelectUser}
               onOpenPostDetail={handleOpenComments}
@@ -857,6 +924,8 @@ function AppContent() {
           onOpenEngagements={(post, tab) => setEngagementsModalState({ post, initialTab: tab })}
           onOpenReport={handleOpenReport}
           onOpenBlock={handleOpenBlock}
+          onOpenEditPost={handleOpenEditPost}
+          onConfirmDeletePost={handleConfirmDeletePost}
         />
       )}
 
@@ -923,6 +992,54 @@ function AppContent() {
           }
         />
       )}
+
+      {/* Edit Post Modal */}
+      {editingPost && (
+        <PostEditModal
+          post={editingPost}
+          isOpen={true}
+          onClose={() => setEditingPost(null)}
+          onPostEdited={() => {
+            setEditingPost(null);
+            // Stale active comments check
+            if (activeCommentPost?.id === editingPost.id) {
+              setActiveCommentPost(null);
+            }
+            if (activeCommentModalPost?.id === editingPost.id) {
+              setActiveCommentModalPost(null);
+            }
+          }}
+          onShowToast={addToast}
+          allUsers={allUsers}
+        />
+      )}
+
+      {/* Delete Post Confirm Modal */}
+      {deletingPost && (
+        <DeletePostConfirmModal
+          post={deletingPost}
+          isOpen={true}
+          onClose={() => setDeletingPost(null)}
+          onPostDeleted={() => {
+            const deletedId = deletingPost.id;
+            setDeletingPost(null);
+            if (activeCommentPost?.id === deletedId) {
+              setActiveCommentPost(null);
+            }
+            if (activeCommentModalPost?.id === deletedId) {
+              setActiveCommentModalPost(null);
+            }
+          }}
+          onShowToast={addToast}
+        />
+      )}
+
+      {/* Admin Panel Modal */}
+      <AdminPanel
+        isOpen={isAdminPanelOpen}
+        onClose={() => setIsAdminPanelOpen(false)}
+        onShowToast={addToast}
+      />
 
       {/* Toast Notification Stack */}
       <ToastContainer toasts={toasts} onDismiss={removeToast} />

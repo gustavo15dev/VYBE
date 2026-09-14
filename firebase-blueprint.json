@@ -13,6 +13,8 @@
         "country": { "type": "string" },
         "photoURL": { "type": "string" },
         "conta_privada": { "type": "boolean" },
+        "verificado": { "type": "boolean" },
+        "eh_admin": { "type": "boolean" },
         "createdAt": { "type": "string" },
         "updatedAt": { "type": "string" }
       },
@@ -243,6 +245,19 @@
         "criado_em": { "type": "string" }
       },
       "required": ["solicitante_id", "usuario_alvo_id", "status", "criado_em"]
+    },
+    "solicitacoes_verificacao": {
+      "title": "SolicitacaoVerificacao",
+      "description": "Solicitações de verificação para obter selo de verificado",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "usuario_id": { "type": "string" },
+        "status": { "type": "string", "enum": ["pendente", "aprovada", "recusada"] },
+        "criado_em": { "type": "string" },
+        "revisado_em": { "type": "string" }
+      },
+      "required": ["usuario_id", "status", "criado_em"]
     }
   }
 }

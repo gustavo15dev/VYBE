@@ -11,6 +11,7 @@ import {
 import { FollowButton } from './FollowButton';
 import { EditProfileModal } from './EditProfileModal';
 import { PostCommentsPanel } from './PostCommentsPanel';
+import { VerifiedBadge } from './VerifiedBadge';
 import {
   Grid3X3,
   Play,
@@ -46,6 +47,8 @@ interface ProfileViewProps {
   onNavigateSettings?: () => void;
   onOpenReport?: (type: ReportTargetType, id: string) => void;
   onOpenBlock?: (targetUid: string, targetUsername: string) => void;
+  onOpenEditPost?: (post: PostItem) => void;
+  onConfirmDeletePost?: (post: PostItem) => void;
 }
 
 type ProfileTab = 'posts' | 'videos' | 'saved';
@@ -67,6 +70,8 @@ export function ProfileView({
   onNavigateSettings,
   onOpenReport,
   onOpenBlock,
+  onOpenEditPost,
+  onConfirmDeletePost,
 }: ProfileViewProps) {
   const isOwnProfile = targetUid === currentUid;
   const isBlockedByMe = myBlockedUsers.has(targetUid);
@@ -231,8 +236,9 @@ export function ProfileView({
         <div className="flex-1 min-w-0 w-full sm:w-auto space-y-4">
           {/* Row 1: Username & Action Buttons */}
           <div className="flex flex-wrap items-center gap-3 justify-between sm:justify-start">
-            <h1 className="text-xl sm:text-2xl font-bold text-gray-900 tracking-tight">
+            <h1 className="text-xl sm:text-2xl font-bold text-gray-900 tracking-tight flex items-center gap-1.5">
               {profile.username}
+              <VerifiedBadge verified={profile.verificado} size={18} />
             </h1>
 
             <div className="flex items-center gap-2">
@@ -649,6 +655,10 @@ export function ProfileView({
           onShowToast={onShowToast}
           isModal={true}
           onOpenEngagements={onOpenEngagements}
+          onOpenReport={onOpenReport}
+          onOpenBlock={onOpenBlock}
+          onOpenEditPost={onOpenEditPost}
+          onConfirmDeletePost={onConfirmDeletePost}
         />
       )}
 

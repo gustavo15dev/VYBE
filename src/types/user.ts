@@ -25,4 +25,18 @@ export interface UserProfile {
   blockedUsers?: string[];
   createdAt: string;
   updatedAt?: string;
+  verificado?: boolean;
+  eh_admin?: boolean;
+}
+
+export interface VerificationRequestItem {
+  id: string;
+  usuario_id: string;
+  status: 'pendente' | 'aprovada' | 'recusada';
+  criado_em: string;
+  revisado_em?: string;
+  // Denormalized user info for the admin list
+  username?: string;
+  displayName?: string;
+  photoURL?: string;
 }

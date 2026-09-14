@@ -11,6 +11,7 @@ import {
   formatEngagementCount,
 } from '../services/socialService';
 import { FollowButton } from './FollowButton';
+import { VerifiedBadge } from './VerifiedBadge';
 import { usePostViewObserver } from '../hooks/usePostViewObserver';
 import { FormattedText } from './FormattedText';
 import {
@@ -271,8 +272,9 @@ export function PublicPostView({
                 )}
               </div>
               <div>
-                <div className="font-semibold text-gray-900 text-sm group-hover:text-[#548687] transition-colors">
-                  {post.authorDisplayName || post.authorUsername}
+                <div className="font-semibold text-gray-900 text-sm group-hover:text-[#548687] transition-colors flex items-center gap-1">
+                  <span>{post.authorDisplayName || post.authorUsername}</span>
+                  <VerifiedBadge verified={authorProfile?.verificado} uid={post.authorUid} allUsers={allUsers} size={13} />
                 </div>
                 <div className="text-xs text-gray-500">@{post.authorUsername}</div>
               </div>

@@ -452,49 +452,30 @@ export async function fetchHashtags(searchQuery?: string): Promise<HashtagItem[]
 
   try {
     const hashtagsCol = collection(db, 'hashtags');
-    const q = query(hashtagsCol, orderBy('contagem_posts', 'desc'), limit(50));
+    const q = query(hashtagsCol, orderBy('contagem_posts', 'desc'), limit(150));
     const snap = await getDocs(q);
 
-    const results: HashtagItem[] = [];
+    let results: HashtagItem[] = [];
     snap.forEach((d) => {
-      const data = d.data() as HashtagItem;
-      results.push({
-        id: d.id,
-        nome: data.nome || d.id,
-        contagem_posts: typeof data.contagem_posts === 'number' ? data.contagem_posts : 1,
-      });
+      const data = d.data() as any;
+      if (data && data.contagem_posts > 0) {
+        results.push({
+          id: d.id,
+          nome: data.nome || d.id,
+          contagem_posts: typeof data.contagem_posts === 'number' ? data.contagem_posts : 1,
+        });
+      }
     });
 
-    const seedHashtags: HashtagItem[] = [
-      { id: 'viagem', nome: 'viagem', contagem_posts: 42100 },
-      { id: 'viagemdefaria', nome: 'viagemdefaria', contagem_posts: 890 },
-      { id: 'fotografia', nome: 'fotografia', contagem_posts: 18500 },
-      { id: 'design', nome: 'design', contagem_posts: 12400 },
-      { id: 'musica', nome: 'musica', contagem_posts: 9800 },
-      { id: 'sp', nome: 'sp', contagem_posts: 34100 },
-      { id: 'brasil', nome: 'brasil', contagem_posts: 56200 },
-      { id: 'lifestyle', nome: 'lifestyle', contagem_posts: 8400 },
-    ];
-
-    const combinedMap = new Map<string, HashtagItem>();
-    seedHashtags.forEach((h) => combinedMap.set(h.nome.toLowerCase(), h));
-    results.forEach((h) => combinedMap.set(h.nome.toLowerCase(), h));
-
-    let allTags = Array.from(combinedMap.values());
-
     if (cleanQuery) {
-      allTags = allTags.filter((h) => h.nome.toLowerCase().includes(cleanQuery));
+      results = results.filter((h) => h.nome.toLowerCase().includes(cleanQuery));
     }
 
-    allTags.sort((a, b) => b.contagem_posts - a.contagem_posts);
-    return allTags;
+    results.sort((a, b) => b.contagem_posts - a.contagem_posts);
+    return results;
   } catch (err) {
     console.warn('Error fetching hashtags from Firestore:', err);
-    return [
-      { id: 'viagem', nome: 'viagem', contagem_posts: 42100 },
-      { id: 'viagemdefaria', nome: 'viagemdefaria', contagem_posts: 890 },
-      { id: 'fotografia', nome: 'fotografia', contagem_posts: 18500 },
-    ];
+    return [];
   }
 }
 
@@ -636,6 +617,229 @@ export async function createPost(params: {
   }
 
   return postRef.id;
+}
+
+/**
+ * Edits an existing post.
+ * Checks permissions: only author can edit.
+ */
+export async function editPost(params: {
+  postId: string;
+  editorUid: string;
+  newContent: string;
+  newMediaUrls: string[];
+  allUsers?: UserProfile[];
+}): Promise<void> {
+  const postRef = doc(db, 'posts', params.postId);
+  const snap = await getDoc(postRef);
+  if (!snap.exists()) {
+    throw new Error('Publicação não encontrada.');
+  }
+
+  const post = snap.data() as PostItem;
+  if (post.authorUid !== params.editorUid) {
+    throw new Error('Você não tem permissão para editar esta publicação.');
+  }
+
+  const oldHashtags = post.hashtags || [];
+  const newHashtags = extractHashtags(params.newContent);
+
+  // Parse added and removed hashtags to update count
+  const addedTags = newHashtags.filter(t => !oldHashtags.includes(t));
+  const removedTags = oldHashtags.filter(t => !newHashtags.includes(t));
+
+  // Update in Firestore
+  const updateData: Partial<PostItem> & { editado_em?: string } = {
+    content: params.newContent,
+    hashtags: newHashtags,
+    editado_em: new Date().toISOString(),
+  };
+
+  // Only update mediaUrls if post has media (type is image/video)
+  if (post.mediaType === 'image' || post.mediaType === 'video') {
+    updateData.mediaUrls = params.newMediaUrls;
+    updateData.mediaUrl = params.newMediaUrls.length > 0 ? params.newMediaUrls[0] : '';
+  }
+
+  await updateDoc(postRef, sanitizeForFirestore(updateData));
+
+  // Decrement removed hashtags
+  for (const tag of removedTags) {
+    try {
+      const tagRef = doc(db, 'hashtags', tag);
+      const tagSnap = await getDoc(tagRef);
+      if (tagSnap.exists()) {
+        const tagData = tagSnap.data() as HashtagItem;
+        const newCount = Math.max(0, (tagData.contagem_posts || 1) - 1);
+        await updateDoc(tagRef, { contagem_posts: newCount });
+      }
+      await deleteDoc(doc(db, 'post_hashtag', `${params.postId}_${tag}`));
+    } catch (err) {
+      console.warn(`Error decrementing hashtag #${tag}:`, err);
+    }
+  }
+
+  // Increment added hashtags
+  for (const tag of addedTags) {
+    try {
+      const tagRef = doc(db, 'hashtags', tag);
+      await setDoc(
+        tagRef,
+        {
+          id: tag,
+          nome: tag,
+          contagem_posts: increment(1),
+        },
+        { merge: true }
+      );
+
+      const postTagRef = doc(db, 'post_hashtag', `${params.postId}_${tag}`);
+      await setDoc(postTagRef, {
+        id: `${params.postId}_${tag}`,
+        post_id: params.postId,
+        hashtag_id: tag,
+      });
+    } catch (err) {
+      console.warn(`Error incrementing hashtag #${tag}:`, err);
+    }
+  }
+
+  // Process mentions in newContent for notifications
+  const mentions = extractMentions(params.newContent);
+  if (mentions.length > 0 && params.allUsers) {
+    // Find author details
+    const authorSnap = await getDoc(doc(db, 'users', post.authorUid));
+    if (authorSnap.exists()) {
+      const author = authorSnap.data() as UserProfile;
+      for (const username of mentions) {
+        const targetUser = params.allUsers.find(
+          (u) => u.username.toLowerCase().replace(/^@/, '') === username
+        );
+
+        if (targetUser && targetUser.uid !== post.authorUid) {
+          try {
+            // Check if mention record already exists
+            const q = query(
+              collection(db, 'mencao'),
+              where('post_id', '==', params.postId),
+              where('usuario_mencionado_id', '==', targetUser.uid)
+            );
+            const mentionSnap = await getDocs(q);
+            if (mentionSnap.empty) {
+              const mentionRef = doc(collection(db, 'mencao'));
+              await setDoc(mentionRef, {
+                id: mentionRef.id,
+                post_id: params.postId,
+                usuario_mencionado_id: targetUser.uid,
+                criado_em: new Date().toISOString(),
+              });
+
+              await createNotification({
+                usuario_destinatario_id: targetUser.uid,
+                usuario_origem_id: post.authorUid,
+                usuario_origem_username: author.username,
+                usuario_origem_displayName: author.displayName || author.username,
+                usuario_origem_photoURL: author.photoURL || '',
+                tipo: 'mencao',
+                post_id: params.postId,
+                conteudo_extra: params.newContent,
+              });
+            }
+          } catch (err) {
+            console.warn(`Error creating mention notification during edit for @${username}:`, err);
+          }
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Deletes a post and all related sub-documents in cascade.
+ * Checks permissions: only author can delete.
+ */
+export async function deletePost(postId: string, deleterUid: string): Promise<void> {
+  const postRef = doc(db, 'posts', postId);
+  const snap = await getDoc(postRef);
+  if (!snap.exists()) {
+    throw new Error('Publicação não encontrada.');
+  }
+
+  const post = snap.data() as PostItem;
+  if (post.authorUid !== deleterUid) {
+    throw new Error('Você não tem permissão para excluir esta publicação.');
+  }
+
+  // 1. Delete post document
+  await deleteDoc(postRef);
+
+  // 2. Cascade deletion of comments
+  try {
+    const commentsQ = query(collection(db, 'comments'), where('post_id', '==', postId));
+    const commentsSnap = await getDocs(commentsQ);
+    const deleteCommentsPromises = commentsSnap.docs.map((d) => deleteDoc(d.ref));
+    await Promise.all(deleteCommentsPromises);
+  } catch (err) {
+    console.warn('Error deleting comments on post delete:', err);
+  }
+
+  // 3. Cascade deletion of curtidas
+  try {
+    const curtidasQ = query(collection(db, 'curtidas'), where('post_id', '==', postId));
+    const curtidasSnap = await getDocs(curtidasQ);
+    const deleteCurtidasPromises = curtidasSnap.docs.map((d) => deleteDoc(d.ref));
+    await Promise.all(deleteCurtidasPromises);
+  } catch (err) {
+    console.warn('Error deleting curtidas on post delete:', err);
+  }
+
+  // 4. Cascade deletion of visualizacoes
+  try {
+    const viewsQ = query(collection(db, 'visualizacoes'), where('post_id', '==', postId));
+    const viewsSnap = await getDocs(viewsQ);
+    const deleteViewsPromises = viewsSnap.docs.map((d) => deleteDoc(d.ref));
+    await Promise.all(deleteViewsPromises);
+  } catch (err) {
+    console.warn('Error deleting visualizacoes on post delete:', err);
+  }
+
+  // 5. Cascade deletion of mencao
+  try {
+    const mencaoQ = query(collection(db, 'mencao'), where('post_id', '==', postId));
+    const mencaoSnap = await getDocs(mencaoQ);
+    const deleteMencaoPromises = mencaoSnap.docs.map((d) => deleteDoc(d.ref));
+    await Promise.all(deleteMencaoPromises);
+  } catch (err) {
+    console.warn('Error deleting mentions on post delete:', err);
+  }
+
+  // 6. Cascade deletion of notifications (notificacoes) related to this post
+  try {
+    const notifsQ = query(collection(db, 'notificacoes'), where('post_id', '==', postId));
+    const notifsSnap = await getDocs(notifsQ);
+    const deleteNotifsPromises = notifsSnap.docs.map((d) => deleteDoc(d.ref));
+    await Promise.all(deleteNotifsPromises);
+  } catch (err) {
+    console.warn('Error deleting notifications on post delete:', err);
+  }
+
+  // 7. Decrement contagem_posts on hashtags collection & delete post_hashtag links
+  const hashtags = post.hashtags || [];
+  for (const tag of hashtags) {
+    try {
+      const tagRef = doc(db, 'hashtags', tag);
+      const tagSnap = await getDoc(tagRef);
+      if (tagSnap.exists()) {
+        const tagData = tagSnap.data() as HashtagItem;
+        const newCount = Math.max(0, (tagData.contagem_posts || 1) - 1);
+        await updateDoc(tagRef, { contagem_posts: newCount });
+      }
+
+      await deleteDoc(doc(db, 'post_hashtag', `${postId}_${tag}`));
+    } catch (err) {
+      console.warn(`Error decrementing hashtag #${tag} during post delete:`, err);
+    }
+  }
 }
 
 /**

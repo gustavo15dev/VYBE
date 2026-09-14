@@ -87,6 +87,7 @@ export interface PostItem {
   videoDuration?: number;
   collaborators?: PostCollaborator[]; // colaboradores: [{ usuario_id, status: "pendente" | "aceito" | "recusado" }]
   createdAt: string; // criado_em: timestamp
+  editado_em?: string; // timestamp de edição opcional
   likes: string[]; // likes
   likesCount?: number;
   viewsCount?: number;
@@ -172,7 +173,9 @@ export type NotificationType =
   | 'curtida_comentario'
   | 'solicitacao_mensagem'
   | 'solicitacao_seguir'
-  | 'mencao';
+  | 'mencao'
+  | 'verificacao_aprovada'
+  | 'verificacao_recusada';
 
 export interface FollowRequestItem {
   id: string;

@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { UserProfile, UserNotificationPreferences } from '../types/user';
+import { collection, query, where, getDocs, setDoc, doc } from 'firebase/firestore';
+import { db } from '../lib/firebase';
 import {
   updateUserProfile,
   isUsernameAvailable,
@@ -35,7 +37,8 @@ export type SettingsTab =
   | 'privacy'
   | 'notifications'
   | 'security'
-  | 'blocked';
+  | 'blocked'
+  | 'verification';
 
 interface SettingsViewProps {
   currentUserProfile: UserProfile;
@@ -55,6 +58,12 @@ export function SettingsView({
   onShowToast,
 }: SettingsViewProps) {
   const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab);
+
+  // Verification state
+  const [postsCount, setPostsCount] = useState<number>(0);
+  const [verificationRequest, setVerificationRequest] = useState<any>(null);
+  const [loadingVerification, setLoadingVerification] = useState<boolean>(true);
+  const [submittingRequest, setSubmittingRequest] = useState<boolean>(false);
 
   // Profile Edit State
   const [displayName, setDisplayName] = useState(currentUserProfile.displayName || '');
@@ -102,6 +111,39 @@ export function SettingsView({
   const [saving, setSaving] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleSubmitVerification = async () => {
+    const isPhotoSet = !!currentUserProfile.photoURL;
+    const isBioSet = !!currentUserProfile.bio && currentUserProfile.bio.trim().length > 0;
+    const isPostsCountEnough = postsCount >= 3;
+    const canRequestVerification = isPhotoSet && isBioSet && isPostsCountEnough;
+
+    if (!canRequestVerification || submittingRequest) return;
+    setSubmittingRequest(true);
+    try {
+      const reqId = currentUserProfile.uid; // One request per user
+      const requestRef = doc(db, 'solicitacoes_verificacao', reqId);
+      
+      const newRequest = {
+        id: reqId,
+        usuario_id: currentUserProfile.uid,
+        status: 'pendente' as const,
+        criado_em: new Date().toISOString(),
+        username: currentUserProfile.username,
+        displayName: currentUserProfile.displayName,
+        photoURL: currentUserProfile.photoURL || '',
+      };
+      
+      await setDoc(requestRef, newRequest);
+      setVerificationRequest(newRequest);
+      onShowToast?.('Sua solicitação de verificação foi enviada com sucesso! 🎉', 'success');
+    } catch (err) {
+      console.error('Error submitting verification request:', err);
+      onShowToast?.('Ocorreu um erro ao enviar sua solicitação. Tente novamente.', 'error');
+    } finally {
+      setSubmittingRequest(false);
+    }
+  };
 
   // Sync profile when currentUserProfile changes
   useEffect(() => {
@@ -176,6 +218,39 @@ export function SettingsView({
 
     return () => clearTimeout(timer);
   }, [username, currentUserProfile.username]);
+
+  // Load verification status and posts count when verification tab is active
+  useEffect(() => {
+    if (activeTab !== 'verification') return;
+
+    async function loadVerificationData() {
+      setLoadingVerification(true);
+      try {
+        // Fetch user's actual post count from posts collection
+        const postsRef = collection(db, 'posts');
+        const postsQuery = query(postsRef, where('authorUid', '==', currentUserProfile.uid));
+        const postsSnap = await getDocs(postsQuery);
+        setPostsCount(postsSnap.size);
+
+        // Fetch user's existing verification request if any
+        const reqRef = collection(db, 'solicitacoes_verificacao');
+        const reqQuery = query(reqRef, where('usuario_id', '==', currentUserProfile.uid));
+        const reqSnap = await getDocs(reqQuery);
+        if (!reqSnap.empty) {
+          const docData = reqSnap.docs[0].data();
+          setVerificationRequest({ id: reqSnap.docs[0].id, ...docData });
+        } else {
+          setVerificationRequest(null);
+        }
+      } catch (err) {
+        console.error('Error loading verification data:', err);
+      } finally {
+        setLoadingVerification(false);
+      }
+    }
+
+    loadVerificationData();
+  }, [activeTab, currentUserProfile.uid]);
 
   // Check if profile tab has changes
   const hasProfileChanges =
@@ -503,6 +578,25 @@ export function SettingsView({
                 }`}
               />
               <span>Contas bloqueadas</span>
+            </button>
+
+            {/* Solicitar Selo de Verificado */}
+            <button
+              id="settings-tab-verification"
+              type="button"
+              onClick={() => setActiveTab('verification')}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-sm transition-all cursor-pointer text-left ${
+                activeTab === 'verification'
+                  ? 'bg-[#F1F5F5] text-gray-900 font-semibold shadow-2xs'
+                  : 'text-gray-700 hover:bg-[#F8FAFA] hover:text-gray-900 font-medium'
+              }`}
+            >
+              <CheckCircle2
+                className={`w-4 h-4 shrink-0 ${
+                  activeTab === 'verification' ? 'text-[#548687] stroke-[2.2]' : 'text-gray-500'
+                }`}
+              />
+              <span>Solicitar Selo</span>
             </button>
 
             {/* 6. Sair (Red Highlight Logout) */}
@@ -1253,8 +1347,170 @@ export function SettingsView({
             </div>
           )}
 
+          {/* TAB 6: SOLICITAR SELO DE VERIFICADO */}
+          {activeTab === 'verification' && (
+            <div className="space-y-6 animate-in fade-in duration-200" id="settings-tab-verification-panel">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-full bg-[#E1EEEE] text-[#426F70] flex items-center justify-center shrink-0">
+                  <CheckCircle2 className="w-6 h-6 stroke-[2.2]" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-gray-900 tracking-tight">
+                    Solicitar selo de verificado
+                  </h2>
+                  <p className="text-xs text-gray-500">
+                    Sua conta será revisada pela nossa equipe administrativa da VYBE.
+                  </p>
+                </div>
+              </div>
+
+              {currentUserProfile.verificado ? (
+                <div className="p-4 bg-emerald-50 border border-emerald-100 rounded-2xl flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0">
+                    <Check className="w-4 h-4 stroke-[3]" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-emerald-900 text-sm">
+                      Perfil verificado!
+                    </h3>
+                    <p className="text-xs text-emerald-700 mt-0.5 leading-relaxed">
+                      Seu perfil já possui o selo de verificação oficial da VYBE. Parabéns!
+                    </p>
+                  </div>
+                </div>
+              ) : verificationRequest?.status === 'pendente' ? (
+                <div className="p-4 bg-amber-50 border border-amber-100 rounded-2xl flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center shrink-0">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="font-bold text-amber-900 text-sm">
+                      Solicitação em análise
+                    </h3>
+                    <p className="text-xs text-amber-700 mt-0.5 leading-relaxed">
+                      Sua solicitação de verificação está sendo revisada por nossa equipe. Aguarde o retorno de nossa moderação!
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  {verificationRequest?.status === 'recusada' && (
+                    <div className="p-4 bg-rose-50 border border-rose-100 rounded-2xl flex items-start gap-3">
+                      <div className="w-8 h-8 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
+                        <X className="w-4 h-4 stroke-[3]" />
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="font-bold text-rose-900 text-sm">
+                          Solicitação recusada
+                        </h3>
+                        <p className="text-xs text-rose-700 mt-0.5 leading-relaxed">
+                          Sua solicitação de verificação anterior foi recusada por nossa equipe. Você pode reenviar uma nova solicitação caso atenda a todos os critérios abaixo.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="space-y-4">
+                    <div className="bg-[#FAFBFB] border border-gray-100 rounded-2xl p-5 space-y-4">
+                      <h3 className="font-bold text-gray-900 text-sm tracking-tight">
+                        Pré-requisitos mínimos de verificação
+                      </h3>
+                      <p className="text-xs text-gray-500 leading-relaxed">
+                        O botão "Enviar solicitação" ficará disponível assim que todos os critérios de qualidade abaixo forem totalmente atendidos pelo seu perfil:
+                      </p>
+
+                      <div className="space-y-3 pt-2">
+                        {/* 1. Foto de perfil */}
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            {!!currentUserProfile.photoURL ? (
+                              <div className="w-6 h-6 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0">
+                                <Check className="w-3.5 h-3.5 stroke-[3]" />
+                              </div>
+                            ) : (
+                              <div className="w-6 h-6 rounded-full bg-[#FAFBFB] border border-gray-200 text-gray-400 flex items-center justify-center shrink-0">
+                                <X className="w-3.5 h-3.5 stroke-[3]" />
+                              </div>
+                            )}
+                            <span className={`text-xs font-medium ${!!currentUserProfile.photoURL ? 'text-gray-900' : 'text-gray-500'}`}>
+                              Foto de perfil definida
+                            </span>
+                          </div>
+                          <span className={`text-xs font-semibold ${!!currentUserProfile.photoURL ? 'text-emerald-600' : 'text-rose-500'}`}>
+                            {!!currentUserProfile.photoURL ? 'Atendido' : 'Pendente'}
+                          </span>
+                        </div>
+
+                        {/* 2. Bio preenchida */}
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            {(!!currentUserProfile.bio && currentUserProfile.bio.trim().length > 0) ? (
+                              <div className="w-6 h-6 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0">
+                                <Check className="w-3.5 h-3.5 stroke-[3]" />
+                              </div>
+                            ) : (
+                              <div className="w-6 h-6 rounded-full bg-[#FAFBFB] border border-gray-200 text-gray-400 flex items-center justify-center shrink-0">
+                                <X className="w-3.5 h-3.5 stroke-[3]" />
+                              </div>
+                            )}
+                            <span className={`text-xs font-medium ${(!!currentUserProfile.bio && currentUserProfile.bio.trim().length > 0) ? 'text-gray-900' : 'text-gray-500'}`}>
+                              Bio preenchida
+                            </span>
+                          </div>
+                          <span className={`text-xs font-semibold ${(!!currentUserProfile.bio && currentUserProfile.bio.trim().length > 0) ? 'text-emerald-600' : 'text-rose-500'}`}>
+                            {(!!currentUserProfile.bio && currentUserProfile.bio.trim().length > 0) ? 'Atendido' : 'Pendente'}
+                          </span>
+                        </div>
+
+                        {/* 3. Mínimo de 3 publicações */}
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            {postsCount >= 3 ? (
+                              <div className="w-6 h-6 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0">
+                                <Check className="w-3.5 h-3.5 stroke-[3]" />
+                              </div>
+                            ) : (
+                              <div className="w-6 h-6 rounded-full bg-[#FAFBFB] border border-gray-200 text-gray-400 flex items-center justify-center shrink-0">
+                                <X className="w-3.5 h-3.5 stroke-[3]" />
+                              </div>
+                            )}
+                            <span className={`text-xs font-medium ${postsCount >= 3 ? 'text-gray-900' : 'text-gray-500'}`}>
+                              Mínimo de 3 publicações (você tem <span className="font-semibold">{postsCount}</span>)
+                            </span>
+                          </div>
+                          <span className={`text-xs font-semibold ${postsCount >= 3 ? 'text-emerald-600' : 'text-rose-500'}`}>
+                            {postsCount >= 3 ? 'Atendido' : 'Pendente'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-end pt-4 border-t border-gray-100">
+                      <button
+                        id="btn-submit-verification"
+                        type="button"
+                        onClick={handleSubmitVerification}
+                        disabled={!(!!currentUserProfile.photoURL && !!currentUserProfile.bio && currentUserProfile.bio.trim().length > 0 && postsCount >= 3) || submittingRequest}
+                        className="px-6 py-2.5 bg-[#548687] hover:bg-[#436e6f] disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-xl shadow-xs transition-all cursor-pointer flex items-center gap-2"
+                      >
+                        {submittingRequest ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            <span>Enviando solicitação...</span>
+                          </>
+                        ) : (
+                          <span>Enviar solicitação</span>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
           {/* GLOBAL BOTTOM ACTION ROW: "Salvar alterações" (Matching image.png) */}
-          {activeTab !== 'blocked' && (
+          {activeTab !== 'blocked' && activeTab !== 'verification' && (
             <div className="pt-6 border-t border-gray-100 flex items-center justify-end gap-3">
               <button
                 id="btn-settings-save"

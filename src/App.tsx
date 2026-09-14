@@ -17,6 +17,7 @@ import { MessagesView } from './components/MessagesView';
 import { NotificationsView } from './components/NotificationsView';
 import { ExploreView } from './components/ExploreView';
 import { SettingsView } from './components/SettingsView';
+import { InsightsView } from './components/InsightsView';
 import { AdminPanel } from './components/AdminPanel';
 import { SharePostModal } from './components/SharePostModal';
 import { PostEngagementsModal } from './components/PostEngagementsModal';
@@ -41,7 +42,7 @@ import {
   subscribeOutgoingFollowRequests,
   cleanupSeedData,
 } from './services/socialService';
-import { Loader2, Home, Users, MessageCircle, Bell, Compass, User } from 'lucide-react';
+import { Loader2, Home, Users, MessageCircle, Bell, Compass, User, BarChart3 } from 'lucide-react';
 
 function AppContent() {
   const { user, profile, loading, needsProfileCompletion, setProfile, logout } = useAuth();
@@ -607,6 +608,7 @@ function AppContent() {
         <div className="hidden md:block border-r border-gray-100 sticky top-[68px] h-[calc(100vh-68px)] overflow-y-auto">
           <Sidebar
             currentView={currentView}
+            isCreator={profile?.conta_criador}
             hasUnreadMessages={hasUnreadMessages}
             hasUnreadNotifications={unreadNotificationsCount > 0}
             unreadNotificationsCount={unreadNotificationsCount}
@@ -774,6 +776,14 @@ function AppContent() {
               onOpenEngagements={(post, tab) => setEngagementsModalState({ post, initialTab: tab })}
             />
           </div>
+        ) : currentView === 'insights' ? (
+          <div className="flex-1 min-w-0 bg-[#F9FBFC] min-h-[calc(100vh-68px)]">
+            <InsightsView
+              currentUserProfile={profile}
+              onShowToast={addToast}
+              onOpenPostDetail={handleOpenComments}
+            />
+          </div>
         ) : (
           <div className="flex-1 min-w-0 py-12 px-6 text-center">
             <p className="text-gray-500 text-sm">
@@ -853,6 +863,18 @@ function AppContent() {
           </div>
           <span className="text-[10px] font-medium">Avisos</span>
         </button>
+
+        {profile?.conta_criador && (
+          <button
+            onClick={() => setCurrentView('insights')}
+            className={`p-1.5 flex flex-col items-center gap-0.5 cursor-pointer ${
+              currentView === 'insights' ? 'text-[#548687]' : 'text-gray-500'
+            }`}
+          >
+            <BarChart3 className="w-5 h-5" />
+            <span className="text-[10px] font-medium">Insights</span>
+          </button>
+        )}
 
         <button
           onClick={handleNavigateProfile}

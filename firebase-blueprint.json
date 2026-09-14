@@ -15,6 +15,7 @@
         "conta_privada": { "type": "boolean" },
         "verificado": { "type": "boolean" },
         "eh_admin": { "type": "boolean" },
+        "conta_criador": { "type": "boolean" },
         "createdAt": { "type": "string" },
         "updatedAt": { "type": "string" }
       },
@@ -213,6 +214,7 @@
       "properties": {
         "id": { "type": "string" },
         "denunciante_id": { "type": "string" },
+        "denunciado_id": { "type": "string" },
         "alvo_tipo": { "type": "string", "enum": ["post", "comentario", "usuario", "story"] },
         "alvo_id": { "type": "string" },
         "motivo": { "type": "string", "enum": ["nudez", "discurso_odio", "violencia", "bullying", "falso", "spam", "nao_gosto"] },

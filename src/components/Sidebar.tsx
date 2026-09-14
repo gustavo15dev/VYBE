@@ -1,4 +1,4 @@
-import { Home, Compass, Users, MessageCircle, Bell, Plus, User } from 'lucide-react';
+import { Home, Compass, Users, MessageCircle, Bell, Plus, User, BarChart3 } from 'lucide-react';
 
 export type AppView =
   | 'home'
@@ -8,10 +8,12 @@ export type AppView =
   | 'notifications'
   | 'profile'
   | 'settings'
-  | 'hashtag';
+  | 'hashtag'
+  | 'insights';
 
 interface SidebarProps {
   currentView?: AppView;
+  isCreator?: boolean;
   hasUnreadMessages?: boolean;
   hasUnreadNotifications?: boolean;
   unreadNotificationsCount?: number;
@@ -23,6 +25,7 @@ interface SidebarProps {
 
 export function Sidebar({
   currentView = 'home',
+  isCreator = false,
   hasUnreadMessages = false,
   hasUnreadNotifications = false,
   unreadNotificationsCount = 0,
@@ -44,7 +47,8 @@ export function Sidebar({
         view === 'friends' ||
         view === 'messages' ||
         view === 'notifications' ||
-        view === 'profile'
+        view === 'profile' ||
+        view === 'insights'
       ) {
         onViewChange(view);
         return;
@@ -60,8 +64,13 @@ export function Sidebar({
     { name: 'Amigos', icon: Users, view: 'friends' },
     { name: 'Mensagens', icon: MessageCircle, view: 'messages' },
     { name: 'Notificações', icon: Bell, view: 'notifications' },
-    { name: 'Perfil', icon: User, view: 'profile' },
   ];
+
+  if (isCreator) {
+    navItems.push({ name: 'Insights', icon: BarChart3, view: 'insights' });
+  }
+
+  navItems.push({ name: 'Perfil', icon: User, view: 'profile' });
 
   return (
     <aside className="w-56 shrink-0 py-6 pr-4 flex flex-col justify-between">

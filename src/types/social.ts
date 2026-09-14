@@ -244,6 +244,7 @@ export type ReportReason =
 export interface ReportItem {
   id: string;
   denunciante_id: string;
+  denunciado_id?: string;
   alvo_tipo: ReportTargetType;
   alvo_id: string;
   motivo: ReportReason;

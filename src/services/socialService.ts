@@ -2346,9 +2346,44 @@ export async function createReport(reportData: {
   motivo: ReportReason;
 }): Promise<void> {
   const reportRef = doc(collection(db, 'denuncias'));
+  
+  // Resolve reported user (denunciado_id)
+  let denunciado_id = '';
+  if (reportData.alvo_tipo === 'usuario') {
+    denunciado_id = reportData.alvo_id;
+  } else if (reportData.alvo_tipo === 'post') {
+    try {
+      const postSnap = await getDoc(doc(db, 'posts', reportData.alvo_id));
+      if (postSnap.exists()) {
+        denunciado_id = postSnap.data().authorUid || '';
+      }
+    } catch (e) {
+      console.error('Error fetching reported post:', e);
+    }
+  } else if (reportData.alvo_tipo === 'comentario') {
+    try {
+      const commentSnap = await getDoc(doc(db, 'comments', reportData.alvo_id));
+      if (commentSnap.exists()) {
+        denunciado_id = commentSnap.data().autor_id || '';
+      }
+    } catch (e) {
+      console.error('Error fetching reported comment:', e);
+    }
+  } else if (reportData.alvo_tipo === 'story') {
+    try {
+      const storySnap = await getDoc(doc(db, 'stories', reportData.alvo_id));
+      if (storySnap.exists()) {
+        denunciado_id = storySnap.data().authorUid || '';
+      }
+    } catch (e) {
+      console.error('Error fetching reported story:', e);
+    }
+  }
+
   const newReport: ReportItem = {
     id: reportRef.id,
     denunciante_id: reportData.denunciante_id,
+    denunciado_id: denunciado_id || undefined,
     alvo_tipo: reportData.alvo_tipo,
     alvo_id: reportData.alvo_id,
     motivo: reportData.motivo,
@@ -2357,6 +2392,23 @@ export async function createReport(reportData: {
   };
 
   await setDoc(reportRef, newReport);
+
+  // If a user has been reported, they immediately lose verified and creator status!
+  if (denunciado_id) {
+    try {
+      const userRef = doc(db, 'users', denunciado_id);
+      await updateDoc(userRef, {
+        verificado: false,
+        conta_criador: false
+      });
+
+      // Remove any verification request in collection
+      const reqRef = doc(db, 'solicitacoes_verificacao', denunciado_id);
+      await deleteDoc(reqRef);
+    } catch (err) {
+      console.error('Error revoking verification status upon report:', err);
+    }
+  }
 
   // Check recent reports count for target
   try {

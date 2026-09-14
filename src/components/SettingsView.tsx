@@ -30,6 +30,7 @@ import {
   Users,
   Eye,
   UserX,
+  BarChart3,
 } from 'lucide-react';
 
 export type SettingsTab =
@@ -38,7 +39,8 @@ export type SettingsTab =
   | 'notifications'
   | 'security'
   | 'blocked'
-  | 'verification';
+  | 'verification'
+  | 'creator';
 
 interface SettingsViewProps {
   currentUserProfile: UserProfile;
@@ -61,6 +63,7 @@ export function SettingsView({
 
   // Verification state
   const [postsCount, setPostsCount] = useState<number>(0);
+  const [reportsCount, setReportsCount] = useState<number>(0);
   const [verificationRequest, setVerificationRequest] = useState<any>(null);
   const [loadingVerification, setLoadingVerification] = useState<boolean>(true);
   const [submittingRequest, setSubmittingRequest] = useState<boolean>(false);
@@ -116,7 +119,8 @@ export function SettingsView({
     const isPhotoSet = !!currentUserProfile.photoURL;
     const isBioSet = !!currentUserProfile.bio && currentUserProfile.bio.trim().length > 0;
     const isPostsCountEnough = postsCount >= 3;
-    const canRequestVerification = isPhotoSet && isBioSet && isPostsCountEnough;
+    const isNoReports = reportsCount === 0;
+    const canRequestVerification = isPhotoSet && isBioSet && isPostsCountEnough && isNoReports;
 
     if (!canRequestVerification || submittingRequest) return;
     setSubmittingRequest(true);
@@ -142,6 +146,34 @@ export function SettingsView({
       onShowToast?.('Ocorreu um erro ao enviar sua solicitação. Tente novamente.', 'error');
     } finally {
       setSubmittingRequest(false);
+    }
+  };
+
+  const [togglingCreator, setTogglingCreator] = useState(false);
+
+  const handleToggleCreatorMode = async () => {
+    if (!currentUserProfile.verificado) {
+      onShowToast?.('Você precisa ser verificado para ativar o modo criador.', 'error');
+      return;
+    }
+    setTogglingCreator(true);
+    try {
+      const newStatus = !currentUserProfile.conta_criador;
+      const updated = await updateUserProfile(currentUserProfile.uid, {
+        conta_criador: newStatus
+      });
+      onProfileUpdated(updated);
+      onShowToast?.(
+        newStatus 
+          ? 'Modo criador ativado com sucesso! 🎉 Agora você tem acesso aos Insights.' 
+          : 'Modo criador desativado.', 
+        'success'
+      );
+    } catch (err) {
+      console.error('Error toggling creator mode:', err);
+      onShowToast?.('Erro ao alterar o modo criador. Tente novamente.', 'error');
+    } finally {
+      setTogglingCreator(false);
     }
   };
 
@@ -231,6 +263,12 @@ export function SettingsView({
         const postsQuery = query(postsRef, where('authorUid', '==', currentUserProfile.uid));
         const postsSnap = await getDocs(postsQuery);
         setPostsCount(postsSnap.size);
+
+        // Fetch reports count against the user
+        const reportsRef = collection(db, 'denuncias');
+        const reportsQuery = query(reportsRef, where('denunciado_id', '==', currentUserProfile.uid));
+        const reportsSnap = await getDocs(reportsQuery);
+        setReportsCount(reportsSnap.size);
 
         // Fetch user's existing verification request if any
         const reqRef = collection(db, 'solicitacoes_verificacao');
@@ -597,6 +635,25 @@ export function SettingsView({
                 }`}
               />
               <span>Solicitar Selo</span>
+            </button>
+
+            {/* Tornar-se criador */}
+            <button
+              id="settings-tab-creator"
+              type="button"
+              onClick={() => setActiveTab('creator')}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-sm transition-all cursor-pointer text-left ${
+                activeTab === 'creator'
+                  ? 'bg-[#F1F5F5] text-gray-900 font-semibold shadow-2xs'
+                  : 'text-gray-700 hover:bg-[#F8FAFA] hover:text-gray-900 font-medium'
+              }`}
+            >
+              <BarChart3
+                className={`w-4 h-4 shrink-0 ${
+                  activeTab === 'creator' ? 'text-[#548687] stroke-[2.2]' : 'text-gray-500'
+                }`}
+              />
+              <span>Tornar-se criador</span>
             </button>
 
             {/* 6. Sair (Red Highlight Logout) */}
@@ -1482,6 +1539,27 @@ export function SettingsView({
                             {postsCount >= 3 ? 'Atendido' : 'Pendente'}
                           </span>
                         </div>
+
+                        {/* 4. Nenhuma denúncia */}
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            {reportsCount === 0 ? (
+                              <div className="w-6 h-6 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0">
+                                <Check className="w-3.5 h-3.5 stroke-[3]" />
+                              </div>
+                            ) : (
+                              <div className="w-6 h-6 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
+                                <X className="w-3.5 h-3.5 stroke-[3]" />
+                              </div>
+                            )}
+                            <span className={`text-xs font-medium ${reportsCount === 0 ? 'text-gray-900' : 'text-gray-500'}`}>
+                              Nenhuma denúncia registrada (você tem <span className="font-semibold text-rose-600">{reportsCount}</span>)
+                            </span>
+                          </div>
+                          <span className={`text-xs font-semibold ${reportsCount === 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
+                            {reportsCount === 0 ? 'Atendido' : 'Inelegível'}
+                          </span>
+                        </div>
                       </div>
                     </div>
 
@@ -1490,7 +1568,7 @@ export function SettingsView({
                         id="btn-submit-verification"
                         type="button"
                         onClick={handleSubmitVerification}
-                        disabled={!(!!currentUserProfile.photoURL && !!currentUserProfile.bio && currentUserProfile.bio.trim().length > 0 && postsCount >= 3) || submittingRequest}
+                        disabled={!(!!currentUserProfile.photoURL && !!currentUserProfile.bio && currentUserProfile.bio.trim().length > 0 && postsCount >= 3 && reportsCount === 0) || submittingRequest}
                         className="px-6 py-2.5 bg-[#548687] hover:bg-[#436e6f] disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-xl shadow-xs transition-all cursor-pointer flex items-center gap-2"
                       >
                         {submittingRequest ? (
@@ -1509,8 +1587,106 @@ export function SettingsView({
             </div>
           )}
 
+          {/* TAB 7: TORNAR-SE CRIADOR */}
+          {activeTab === 'creator' && (
+            <div className="space-y-6 animate-in fade-in duration-200" id="settings-tab-creator-panel">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-full bg-[#E1EEEE] text-[#426F70] flex items-center justify-center shrink-0">
+                  <BarChart3 className="w-6 h-6 stroke-[2.2]" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-gray-900 tracking-tight">
+                    Conta de criador de conteúdo
+                  </h2>
+                  <p className="text-xs text-gray-500">
+                    Ative para ter acesso a insights sobre suas publicações: alcance, visualizações e engajamento.
+                  </p>
+                </div>
+              </div>
+
+              <div className="bg-white border border-gray-100 rounded-3xl p-6 shadow-2xs space-y-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-sm font-semibold text-gray-900">
+                      Status da qualificação
+                    </h3>
+                    <p className="text-xs text-gray-500">
+                      Você precisa do selo de verificado para ativar esta conta.
+                    </p>
+                  </div>
+                  {currentUserProfile.verificado ? (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-100">
+                      <Check className="w-3.5 h-3.5 stroke-[2.5]" />
+                      Conta verificada
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-rose-50 text-rose-700 border border-rose-100">
+                      <X className="w-3.5 h-3.5 stroke-[2.5]" />
+                      Não qualificado
+                    </span>
+                  )}
+                </div>
+
+                <div className="h-px bg-gray-100" />
+
+                <div className="flex items-center justify-between gap-4">
+                  <div className="space-y-0.5">
+                    <h4 className="text-sm font-bold text-gray-900">
+                      Modo Criador de Conteúdo
+                    </h4>
+                    <p className="text-xs text-gray-500">
+                      {currentUserProfile.conta_criador 
+                        ? "O modo criador está ativado. Sua aba de Insights está disponível no menu lateral." 
+                        : "Ative o modo criador para acessar os painéis de insights e estatísticas de suas publicações."}
+                    </p>
+                  </div>
+
+                  {currentUserProfile.verificado ? (
+                    <button
+                      id="btn-toggle-creator-mode"
+                      type="button"
+                      disabled={togglingCreator}
+                      onClick={handleToggleCreatorMode}
+                      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                        currentUserProfile.conta_criador ? 'bg-[#548687]' : 'bg-gray-200'
+                      }`}
+                    >
+                      <span
+                        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-xs ring-0 transition duration-200 ease-in-out ${
+                          currentUserProfile.conta_criador ? 'translate-x-5' : 'translate-x-0'
+                        }`}
+                      />
+                    </button>
+                  ) : (
+                    <div className="relative inline-flex h-6 w-11 shrink-0 cursor-not-allowed rounded-full border-2 border-transparent bg-gray-100">
+                      <span className="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-gray-300 translate-x-0" />
+                    </div>
+                  )}
+                </div>
+
+                {!currentUserProfile.verificado && (
+                  <div className="p-4 bg-[#FAFBFB] rounded-2xl border border-gray-100 flex items-start gap-3">
+                    <AlertCircle className="w-5 h-5 text-gray-400 shrink-0 mt-0.5" />
+                    <div className="space-y-1">
+                      <p className="text-xs font-semibold text-gray-700">
+                        Contas não verificadas não podem ativar o modo criador.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab('verification')}
+                        className="text-xs font-bold text-[#548687] hover:underline flex items-center gap-1 cursor-pointer text-left"
+                      >
+                        Solicitar selo de verificação &rarr;
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* GLOBAL BOTTOM ACTION ROW: "Salvar alterações" (Matching image.png) */}
-          {activeTab !== 'blocked' && activeTab !== 'verification' && (
+          {activeTab !== 'blocked' && activeTab !== 'verification' && activeTab !== 'creator' && (
             <div className="pt-6 border-t border-gray-100 flex items-center justify-end gap-3">
               <button
                 id="btn-settings-save"

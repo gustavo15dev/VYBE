@@ -27,6 +27,7 @@ export interface UserProfile {
   updatedAt?: string;
   verificado?: boolean;
   eh_admin?: boolean;
+  conta_criador?: boolean;
 }
 
 export interface VerificationRequestItem {

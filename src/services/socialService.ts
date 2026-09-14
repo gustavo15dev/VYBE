@@ -1468,8 +1468,19 @@ export async function toggleFollowUser(
         const targetData = targetUserDoc.data();
         const isPrivate = Boolean(targetData.conta_privada || targetData.isPrivate);
         if (isPrivate) {
+          let profileToSend = followerProfile;
+          if (!profileToSend) {
+            try {
+              const followerDoc = await getDoc(doc(db, 'users', followerUid));
+              if (followerDoc.exists()) {
+                profileToSend = followerDoc.data() as UserProfile;
+              }
+            } catch (e) {
+              // ignore
+            }
+          }
           // Send follow request instead of directly following
-          await createFollowRequest(followerUid, followingUid, followerProfile);
+          await createFollowRequest(followerUid, followingUid, profileToSend);
           return;
         }
       }
@@ -1483,13 +1494,25 @@ export async function toggleFollowUser(
       createdAt: new Date().toISOString(),
     });
 
+    let profileToSend = followerProfile;
+    if (!profileToSend) {
+      try {
+        const followerDoc = await getDoc(doc(db, 'users', followerUid));
+        if (followerDoc.exists()) {
+          profileToSend = followerDoc.data() as UserProfile;
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
+
     // Notify the user being followed
     createNotification({
       usuario_destinatario_id: followingUid,
       usuario_origem_id: followerUid,
-      usuario_origem_username: followerProfile?.username || '',
-      usuario_origem_displayName: followerProfile?.displayName || followerProfile?.username || '',
-      usuario_origem_photoURL: followerProfile?.photoURL || '',
+      usuario_origem_username: profileToSend?.username || followerProfile?.username || '',
+      usuario_origem_displayName: profileToSend?.displayName || profileToSend?.username || followerProfile?.displayName || '',
+      usuario_origem_photoURL: profileToSend?.photoURL || followerProfile?.photoURL || '',
       tipo: 'novo_seguidor',
     }).catch((e) => console.warn('Error creating follow notification:', e));
   }

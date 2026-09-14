@@ -1,7 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Loader2 } from 'lucide-react';
 import { toggleFollowUser, createFollowRequest, cancelFollowRequest } from '../services/socialService';
 import { useAuth } from '../context/AuthContext';
+import { doc, onSnapshot, getDoc } from 'firebase/firestore';
+import { db } from '../lib/firebase';
 
 interface FollowButtonProps {
   currentUid: string;
@@ -33,6 +35,53 @@ export function FollowButton({
   const [isLoading, setIsLoading] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
 
+  // Real-time synchronization for privacy & follow request states
+  const [effectiveIsPrivate, setEffectiveIsPrivate] = useState<boolean>(isPrivate);
+  const [effectiveIsRequested, setEffectiveIsRequested] = useState<boolean>(isRequested);
+
+  useEffect(() => {
+    setEffectiveIsPrivate(isPrivate);
+  }, [isPrivate]);
+
+  useEffect(() => {
+    setEffectiveIsRequested(isRequested);
+  }, [isRequested]);
+
+  // Real-time listener for target user's account privacy
+  useEffect(() => {
+    if (!targetUid) return;
+    const unsub = onSnapshot(
+      doc(db, 'users', targetUid),
+      (snap) => {
+        if (snap.exists()) {
+          const data = snap.data();
+          const priv = Boolean(data?.conta_privada || data?.isPrivate);
+          setEffectiveIsPrivate(priv);
+        }
+      },
+      (err) => {
+        console.warn('Error listening to target user privacy:', err);
+      }
+    );
+    return () => unsub();
+  }, [targetUid]);
+
+  // Real-time listener for follow request status between currentUid and targetUid
+  useEffect(() => {
+    if (!currentUid || !targetUid) return;
+    const reqId = `${currentUid}_${targetUid}`;
+    const unsub = onSnapshot(
+      doc(db, 'solicitacoes_seguir', reqId),
+      (snap) => {
+        setEffectiveIsRequested(snap.exists() && snap.data()?.status === 'pendente');
+      },
+      (err) => {
+        console.warn('Error listening to follow request:', err);
+      }
+    );
+    return () => unsub();
+  }, [currentUid, targetUid]);
+
   // If viewing self, don't show follow button
   if (currentUid === targetUid) {
     return null;
@@ -43,12 +92,29 @@ export function FollowButton({
     if (iFollow) {
       // Prompt confirmation to unfollow
       setShowConfirmModal(true);
-    } else if (isPrivate) {
-      if (isRequested) {
+      return;
+    }
+
+    // Double-check target user's privacy in Firestore before deciding follow vs request
+    let targetPrivate = effectiveIsPrivate;
+    try {
+      const snap = await getDoc(doc(db, 'users', targetUid));
+      if (snap.exists()) {
+        const data = snap.data();
+        targetPrivate = Boolean(data?.conta_privada || data?.isPrivate);
+        setEffectiveIsPrivate(targetPrivate);
+      }
+    } catch (err) {
+      // fallback to effectiveIsPrivate
+    }
+
+    if (targetPrivate) {
+      if (effectiveIsRequested) {
         // Cancel request
         setIsLoading(true);
         try {
           await cancelFollowRequest(currentUid, targetUid);
+          setEffectiveIsRequested(false);
           onShowToast?.(`Solicitação para @${targetUsername} cancelada.`, 'info');
           onActionComplete?.();
         } catch (err) {
@@ -62,6 +128,7 @@ export function FollowButton({
         setIsLoading(true);
         try {
           await createFollowRequest(currentUid, targetUid, profile || undefined);
+          setEffectiveIsRequested(true);
           onShowToast?.(`Solicitação enviada para @${targetUsername}!`, 'success');
           onActionComplete?.();
         } catch (err) {
@@ -135,9 +202,9 @@ export function FollowButton({
             'Seguindo'
           )}
         </button>
-      ) : isPrivate ? (
+      ) : effectiveIsPrivate ? (
         // State: PRIVATE ACCOUNT AND NOT FOLLOWING YET
-        isRequested ? (
+        effectiveIsRequested ? (
           <button
             type="button"
             disabled={isLoading}

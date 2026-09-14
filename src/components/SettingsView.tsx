@@ -86,7 +86,10 @@ export function SettingsView({
   const [usernameError, setUsernameError] = useState<string | null>(null);
 
   // Privacy State
-  const [isPrivate, setIsPrivate] = useState<boolean>(currentUserProfile.isPrivate ?? false);
+  const [isPrivate, setIsPrivate] = useState<boolean>(
+    Boolean(currentUserProfile.conta_privada || currentUserProfile.isPrivate)
+  );
+  const [togglingPrivacy, setTogglingPrivacy] = useState(false);
   const [dmPermission, setDmPermission] = useState<'everyone' | 'following'>(
     currentUserProfile.dmPermission || 'everyone'
   );
@@ -229,6 +232,32 @@ export function SettingsView({
     }
   };
 
+  const handleTogglePrivate = async () => {
+    if (togglingPrivacy) return;
+    const newStatus = !isPrivate;
+    setIsPrivate(newStatus);
+    setTogglingPrivacy(true);
+    try {
+      const updated = await updateUserProfile(currentUserProfile.uid, {
+        isPrivate: newStatus,
+        conta_privada: newStatus,
+      });
+      onProfileUpdated(updated);
+      onShowToast?.(
+        newStatus
+          ? 'Conta privada ativada! Novos seguidores precisarão da sua aprovação.'
+          : 'Conta pública ativada! Qualquer pessoa pode seguir seu perfil.',
+        'success'
+      );
+    } catch (err) {
+      console.error('Error toggling privacy:', err);
+      setIsPrivate(!newStatus);
+      onShowToast?.('Erro ao alterar privacidade da conta. Tente novamente.', 'error');
+    } finally {
+      setTogglingPrivacy(false);
+    }
+  };
+
   // Sync profile when currentUserProfile changes
   useEffect(() => {
     setDisplayName(currentUserProfile.displayName || '');
@@ -236,7 +265,7 @@ export function SettingsView({
     setBio(currentUserProfile.bio || '');
     setLocation(currentUserProfile.location || '');
     setPhotoURL(currentUserProfile.photoURL || '');
-    setIsPrivate(currentUserProfile.isPrivate ?? false);
+    setIsPrivate(Boolean(currentUserProfile.conta_privada || currentUserProfile.isPrivate));
     setDmPermission(currentUserProfile.dmPermission || 'everyone');
     setStoryViewsPermission(currentUserProfile.storyViewsPermission || 'everyone');
     setNotifPrefs({
@@ -395,7 +424,7 @@ export function SettingsView({
 
   // Check if privacy tab has changes
   const hasPrivacyChanges =
-    isPrivate !== (currentUserProfile.isPrivate ?? false) ||
+    isPrivate !== Boolean(currentUserProfile.conta_privada || currentUserProfile.isPrivate) ||
     dmPermission !== (currentUserProfile.dmPermission || 'everyone') ||
     storyViewsPermission !== (currentUserProfile.storyViewsPermission || 'everyone');
 
@@ -992,9 +1021,11 @@ export function SettingsView({
                   </div>
 
                   <button
+                    id="btn-toggle-private-account"
                     type="button"
-                    onClick={() => setIsPrivate(!isPrivate)}
-                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                    onClick={handleTogglePrivate}
+                    disabled={togglingPrivacy}
+                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none disabled:opacity-50 ${
                       isPrivate ? 'bg-[#548687]' : 'bg-gray-200'
                     }`}
                   >

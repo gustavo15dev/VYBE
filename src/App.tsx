@@ -205,6 +205,20 @@ function AppContent() {
 
   const [editingPost, setEditingPost] = useState<PostItem | null>(null);
   const [deletingPost, setDeletingPost] = useState<PostItem | null>(null);
+  const [chatTargetUid, setChatTargetUid] = useState<string | null>(null);
+
+  const handleOpenChatWithUser = (targetUid: string) => {
+    if (!user?.uid) {
+      setAuthModalState({
+        isOpen: true,
+        tab: 'login',
+        paywallMessage: 'Faça login para enviar mensagens.',
+      });
+      return;
+    }
+    setChatTargetUid(targetUid);
+    setCurrentView('messages');
+  };
 
   const handleOpenEditPost = (post: PostItem) => {
     if (!user?.uid) {
@@ -723,6 +737,7 @@ function AppContent() {
               onShowToast={addToast}
               onOpenPostCreator={() => setIsPostCreatorOpen(true)}
               onSelectUser={handleSelectUser}
+              onOpenChat={handleOpenChatWithUser}
               onOpenEngagements={(post, tab) => setEngagementsModalState({ post, initialTab: tab })}
               onNavigateSettings={() => setCurrentView('settings')}
               onOpenReport={handleOpenReport}
@@ -746,6 +761,7 @@ function AppContent() {
             <MessagesView
               allUsers={allUsers}
               myFollowing={myFollowing}
+              initialTargetUid={chatTargetUid}
               onSelectUser={handleSelectUser}
               onOpenPostDetail={handleOpenComments}
               onShowToast={addToast}

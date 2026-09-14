@@ -39,6 +39,14 @@ async function fetchPostMetaData(postId: string) {
 async function startServer() {
   const app = express();
 
+  let vite: any = null;
+  if (process.env.NODE_ENV !== 'production') {
+    vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: 'spa',
+    });
+  }
+
   // API Health Check
   app.get('/api/health', (_req, res) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
@@ -88,6 +96,10 @@ async function startServer() {
           }
         }
 
+        if (vite) {
+          html = await vite.transformIndexHtml(req.originalUrl, html);
+        }
+
         return res.status(200).set({ 'Content-Type': 'text/html' }).end(html);
       }
     } catch (err) {
@@ -97,11 +109,7 @@ async function startServer() {
   });
 
   // Vite middleware for development vs static serve for production
-  if (process.env.NODE_ENV !== 'production') {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: 'spa',
-    });
+  if (vite) {
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), 'dist');

@@ -76,10 +76,9 @@ export function subscribeActiveStories(
   callback: (groups: UserStoriesGroup[], myGroup: UserStoriesGroup | null) => void
 ) {
   const storiesCol = collection(db, 'stories');
-  const q = query(storiesCol, orderBy('createdAt', 'desc'));
 
   return onSnapshot(
-    q,
+    storiesCol,
     (snapshot) => {
       const now = Date.now();
       const validStories: StoryItem[] = [];
@@ -96,7 +95,7 @@ export function subscribeActiveStories(
 
         const createdTime = new Date(story.createdAt).getTime();
         // Discard stories older than 24h
-        if (now - createdTime < TWENTY_FOUR_HOURS_MS) {
+        if (isNaN(createdTime) || now - createdTime < TWENTY_FOUR_HOURS_MS) {
           validStories.push(story);
         }
       });
@@ -156,7 +155,8 @@ export function subscribeActiveStories(
       callback(otherGroups, myGroup);
     },
     (err) => {
-      console.error('Error listening to stories:', err);
+      console.warn('Error listening to stories from Firestore:', err);
+      callback([], null);
     }
   );
 }
@@ -452,13 +452,12 @@ export async function fetchHashtags(searchQuery?: string): Promise<HashtagItem[]
 
   try {
     const hashtagsCol = collection(db, 'hashtags');
-    const q = query(hashtagsCol, orderBy('contagem_posts', 'desc'), limit(150));
-    const snap = await getDocs(q);
+    const snap = await getDocs(hashtagsCol);
 
     let results: HashtagItem[] = [];
     snap.forEach((d) => {
       const data = d.data() as any;
-      if (data && data.contagem_posts > 0) {
+      if (data && (data.contagem_posts > 0 || data.nome)) {
         results.push({
           id: d.id,
           nome: data.nome || d.id,
@@ -466,6 +465,23 @@ export async function fetchHashtags(searchQuery?: string): Promise<HashtagItem[]
         });
       }
     });
+
+    // If no hashtags in collection yet, derive from posts
+    if (results.length === 0) {
+      try {
+        const postsSnap = await getDocs(query(collection(db, 'posts'), limit(50)));
+        const tagMap = new Map<string, number>();
+        postsSnap.forEach((docSnap) => {
+          const pData = docSnap.data() as PostItem;
+          if (Array.isArray(pData.hashtags)) {
+            pData.hashtags.forEach((t) => tagMap.set(t, (tagMap.get(t) || 0) + 1));
+          }
+        });
+        tagMap.forEach((count, tag) => {
+          results.push({ id: tag, nome: tag, contagem_posts: count });
+        });
+      } catch {}
+    }
 
     if (cleanQuery) {
       results = results.filter((h) => h.nome.toLowerCase().includes(cleanQuery));
@@ -477,6 +493,96 @@ export async function fetchHashtags(searchQuery?: string): Promise<HashtagItem[]
     console.warn('Error fetching hashtags from Firestore:', err);
     return [];
   }
+}
+
+/**
+ * Saves or unsaves a post for the current user
+ */
+export async function toggleSavePost(
+  userUid: string,
+  postId: string,
+  isSaved: boolean
+): Promise<boolean> {
+  if (!userUid || !postId) return !isSaved;
+  const saveId = `${userUid}_${postId}`;
+  const saveRef = doc(db, 'salvos', saveId);
+
+  if (isSaved) {
+    await deleteDoc(saveRef);
+    return false;
+  } else {
+    await setDoc(saveRef, {
+      id: saveId,
+      usuario_id: userUid,
+      post_id: postId,
+      salvo_em: new Date().toISOString(),
+    });
+    return true;
+  }
+}
+
+/**
+ * Real-time listener for saved post IDs for current user
+ */
+export function subscribeSavedPostIds(
+  userUid: string,
+  callback: (savedIds: Set<string>) => void
+) {
+  if (!userUid) {
+    callback(new Set());
+    return () => {};
+  }
+
+  const q = query(collection(db, 'salvos'), where('usuario_id', '==', userUid));
+  return onSnapshot(
+    q,
+    (snap) => {
+      const set = new Set<string>();
+      snap.forEach((d) => {
+        const data = d.data();
+        if (data.post_id) {
+          set.add(data.post_id);
+        }
+      });
+      callback(set);
+    },
+    (err) => {
+      console.warn('Error listening to saved posts:', err);
+      callback(new Set());
+    }
+  );
+}
+
+/**
+ * Fetches saved posts for profile
+ */
+export async function fetchSavedPosts(savedIds: Set<string>): Promise<PostItem[]> {
+  if (savedIds.size === 0) return [];
+  const postIds = Array.from(savedIds);
+  const posts: PostItem[] = [];
+
+  for (const id of postIds) {
+    try {
+      const pSnap = await getDoc(doc(db, 'posts', id));
+      if (pSnap.exists()) {
+        const data = pSnap.data() as PostItem;
+        posts.push({
+          ...data,
+          id: pSnap.id,
+          likes: Array.isArray(data.likes) ? data.likes : [],
+          mediaUrls: Array.isArray(data.mediaUrls)
+            ? data.mediaUrls
+            : data.mediaUrl
+            ? [data.mediaUrl]
+            : [],
+        });
+      }
+    } catch {}
+  }
+
+  return posts.sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  );
 }
 
 /**
@@ -2285,6 +2391,33 @@ export async function fetchExploreFeed(
     // Sort descending by calculated score
     candidatePosts.sort((a, b) => b.score - a.score);
 
+    // Fallback: If no candidate posts from third parties, show all available public posts so Explore is rich and functional
+    if (candidatePosts.length === 0) {
+      const fallbackPosts: PostItem[] = [];
+      snap.forEach((docSnap) => {
+        const data = docSnap.data() as PostItem;
+        const post: PostItem = {
+          ...data,
+          id: docSnap.id,
+          likes: Array.isArray(data.likes) ? data.likes : [],
+          mediaUrls: Array.isArray(data.mediaUrls)
+            ? data.mediaUrls
+            : data.mediaUrl
+            ? [data.mediaUrl]
+            : [],
+        };
+        if (filterMediaType && filterMediaType !== 'all') {
+          const isVideo =
+            post.mediaType === 'video' ||
+            (post.mediaUrls && post.mediaUrls.some((u) => u.includes('mp4') || u.includes('video')));
+          if (filterMediaType === 'video' && !isVideo) return;
+          if (filterMediaType === 'image' && isVideo) return;
+        }
+        fallbackPosts.push(post);
+      });
+      return fallbackPosts;
+    }
+
     return candidatePosts.map((cp) => cp.post);
   } catch (err) {
     console.error('Error fetching explore feed:', err);
@@ -2464,6 +2597,16 @@ export async function blockUser(blockerUid: string, blockedUid: string): Promise
   } catch (e) {
     // Ignore if didn't exist
   }
+
+  // Also sync users/{blockerUid}.blockedUsers
+  try {
+    const userRef = doc(db, 'users', blockerUid);
+    await updateDoc(userRef, {
+      blockedUsers: arrayUnion(blockedUid),
+    });
+  } catch (e) {
+    console.warn('Could not update blockedUsers in user doc:', e);
+  }
 }
 
 /**
@@ -2473,6 +2616,16 @@ export async function unblockUser(blockerUid: string, blockedUid: string): Promi
   if (!blockerUid || !blockedUid) return;
   const blockId = `${blockerUid}_${blockedUid}`;
   await deleteDoc(doc(db, 'bloqueios', blockId));
+
+  // Also sync users/{blockerUid}.blockedUsers
+  try {
+    const userRef = doc(db, 'users', blockerUid);
+    await updateDoc(userRef, {
+      blockedUsers: arrayRemove(blockedUid),
+    });
+  } catch (e) {
+    console.warn('Could not update blockedUsers in user doc on unblock:', e);
+  }
 }
 
 /**

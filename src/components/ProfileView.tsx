@@ -7,6 +7,8 @@ import {
   subscribeUserPosts,
   subscribeUserProfileStats,
   unblockUser,
+  subscribeSavedPostIds,
+  fetchSavedPosts,
 } from '../services/socialService';
 import { FollowButton } from './FollowButton';
 import { EditProfileModal } from './EditProfileModal';
@@ -43,6 +45,7 @@ interface ProfileViewProps {
   onOpenPostCreator?: () => void;
   onProfileUpdated?: (updated: UserProfile) => void;
   onSelectUser?: (uid: string) => void;
+  onOpenChat?: (targetUid: string) => void;
   onOpenEngagements?: (post: PostItem, tab: 'curtidas' | 'visualizacoes') => void;
   onNavigateSettings?: () => void;
   onOpenReport?: (type: ReportTargetType, id: string) => void;
@@ -66,6 +69,7 @@ export function ProfileView({
   onOpenPostCreator,
   onProfileUpdated,
   onSelectUser,
+  onOpenChat,
   onOpenEngagements,
   onNavigateSettings,
   onOpenReport,
@@ -84,6 +88,8 @@ export function ProfileView({
   const [loadingProfile, setLoadingProfile] = useState(!isOwnProfile);
   const [stats, setStats] = useState({ postsCount: 0, followersCount: 0, followingCount: 0 });
   const [posts, setPosts] = useState<PostItem[]>([]);
+  const [savedPosts, setSavedPosts] = useState<PostItem[]>([]);
+  const [savedPostIds, setSavedPostIds] = useState<Set<string>>(new Set());
   const [activeTab, setActiveTab] = useState<ProfileTab>('posts');
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [selectedPost, setSelectedPost] = useState<PostItem | null>(null);
@@ -134,6 +140,24 @@ export function ProfileView({
     return () => unsubPosts();
   }, [targetUid]);
 
+  // 4. Subscribe to saved posts for profile owner
+  useEffect(() => {
+    if (!isOwnProfile || !currentUid) return;
+    const unsub = subscribeSavedPostIds(currentUid, async (ids) => {
+      setSavedPostIds(ids);
+      const loaded = await fetchSavedPosts(ids);
+      setSavedPosts(loaded);
+    });
+    return () => unsub();
+  }, [isOwnProfile, currentUid]);
+
+  // Enforce tab security: non-owners cannot be in saved tab
+  useEffect(() => {
+    if (!isOwnProfile && activeTab === 'saved') {
+      setActiveTab('posts');
+    }
+  }, [isOwnProfile, activeTab]);
+
   const handleShare = () => {
     if (navigator.clipboard) {
       navigator.clipboard.writeText(window.location.href);
@@ -144,10 +168,14 @@ export function ProfileView({
   };
 
   const handleOpenMessage = () => {
-    onShowToast?.(
-      `O chat direto com @${profile?.username} estará disponível em breve!`,
-      'info'
-    );
+    if (onOpenChat && targetUid) {
+      onOpenChat(targetUid);
+    } else {
+      onShowToast?.(
+        `Abrindo conversa com @${profile?.username}...`,
+        'info'
+      );
+    }
   };
 
   if (loadingProfile) {
@@ -383,7 +411,7 @@ export function ProfileView({
         </div>
       </div>
 
-      {profile.conta_privada && !isOwnProfile && !iFollow ? (
+      {Boolean(profile.conta_privada || (profile as any).isPrivate) && !isOwnProfile && !iFollow ? (
         <div className="py-20 flex flex-col items-center justify-center text-center space-y-4 bg-white mt-4 border-t border-gray-100">
           <div className="w-16 h-16 rounded-full border-2 border-gray-900 flex items-center justify-center">
             <svg
@@ -410,7 +438,7 @@ export function ProfileView({
         </div>
       ) : (
         <>
-          {/* Tabs Row: POSTS, VÍDEOS, SALVOS */}
+          {/* Tabs Row: POSTS, VÍDEOS, SALVOS (Salvos only for account owner) */}
           <div className="flex items-center justify-center gap-8 sm:gap-12 border-b border-gray-100 text-xs sm:text-sm font-semibold mt-2">
             <button
               type="button"
@@ -444,21 +472,23 @@ export function ProfileView({
               )}
             </button>
 
-            <button
-              type="button"
-              onClick={() => setActiveTab('saved')}
-              className={`py-3 flex items-center gap-2 relative transition-colors cursor-pointer tracking-wider uppercase ${
-                activeTab === 'saved'
-                  ? 'text-gray-900 font-bold'
-                  : 'text-gray-400 hover:text-gray-700'
-              }`}
-            >
-              <Bookmark className="w-4 h-4" />
-              <span>Salvos</span>
-              {activeTab === 'saved' && (
-                <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-[#548687] rounded-full" />
-              )}
-            </button>
+            {isOwnProfile && (
+              <button
+                type="button"
+                onClick={() => setActiveTab('saved')}
+                className={`py-3 flex items-center gap-2 relative transition-colors cursor-pointer tracking-wider uppercase ${
+                  activeTab === 'saved'
+                    ? 'text-gray-900 font-bold'
+                    : 'text-gray-400 hover:text-gray-700'
+                }`}
+              >
+                <Bookmark className="w-4 h-4" />
+                <span>Salvos</span>
+                {activeTab === 'saved' && (
+                  <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-[#548687] rounded-full" />
+                )}
+              </button>
+            )}
           </div>
 
           {/* Tab Content Grid */}
@@ -628,19 +658,79 @@ export function ProfileView({
             )}
 
             {activeTab === 'saved' && (
-              <div className="py-16 text-center space-y-2 bg-[#F9FBFC] rounded-3xl border border-dashed border-gray-200">
-                <Bookmark className="w-10 h-10 text-gray-300 mx-auto" />
-                <h3 className="font-bold text-gray-800 text-sm">
-                  {isOwnProfile
-                    ? 'Nenhuma publicação salva'
-                    : 'Publicações salvas são privadas'}
-                </h3>
-                <p className="text-xs text-gray-500">
-                  {isOwnProfile
-                    ? 'Salve publicações para visualizá-las rapidamente aqui a qualquer momento.'
-                    : 'Apenas o titular da conta pode ver suas publicações salvas.'}
-                </p>
-              </div>
+              <>
+                {savedPosts.length > 0 ? (
+                  <div className="grid grid-cols-3 gap-1.5 sm:gap-3">
+                    {savedPosts.map((post) => {
+                      const mediaUrl = post.mediaUrl || (post.mediaUrls && post.mediaUrls[0]) || '';
+                      const isVideo =
+                        post.mediaType === 'video' ||
+                        (Boolean(mediaUrl) &&
+                          (mediaUrl.startsWith('data:video') ||
+                            mediaUrl.endsWith('.mp4') ||
+                            mediaUrl.endsWith('.webm')));
+
+                      return (
+                        <div
+                          key={post.id}
+                          onClick={() => setSelectedPost(post)}
+                          className="group relative aspect-square bg-[#F1F5F5] rounded-xl sm:rounded-2xl overflow-hidden cursor-pointer shadow-2xs"
+                        >
+                          {isVideo && mediaUrl ? (
+                            <div className="relative w-full h-full bg-black flex items-center justify-center">
+                              <video
+                                src={mediaUrl}
+                                muted
+                                playsInline
+                                className="w-full h-full object-cover"
+                              />
+                              <div className="absolute top-2 right-2 bg-black/60 text-white p-1 rounded-md">
+                                <Play className="w-3.5 h-3.5 fill-white" />
+                              </div>
+                            </div>
+                          ) : mediaUrl ? (
+                            <img
+                              src={mediaUrl}
+                              alt={post.content || 'Publicação salva'}
+                              className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                            />
+                          ) : (
+                            <div className="w-full h-full p-4 flex flex-col justify-between bg-gradient-to-br from-[#E1EEEE] to-[#F1F5F5] text-gray-800">
+                              <p className="text-xs sm:text-sm font-medium line-clamp-4">
+                                {post.content}
+                              </p>
+                              <span className="text-[10px] text-gray-400 self-end">
+                                {new Date(post.createdAt).toLocaleDateString()}
+                              </span>
+                            </div>
+                          )}
+
+                          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white gap-4 font-bold text-sm">
+                            <div className="flex items-center gap-1.5">
+                              <Heart className="w-5 h-5 fill-white" />
+                              <span>{post.likes?.length || 0}</span>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <MessageCircle className="w-5 h-5 fill-white" />
+                              <span>{post.commentsCount || 0}</span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="py-16 text-center space-y-2 bg-[#F9FBFC] rounded-3xl border border-dashed border-gray-200">
+                    <Bookmark className="w-10 h-10 text-gray-300 mx-auto" />
+                    <h3 className="font-bold text-gray-800 text-sm">
+                      Nenhuma publicação salva
+                    </h3>
+                    <p className="text-xs text-gray-500">
+                      Salve publicações tocando no ícone de marcador para vê-las aqui.
+                    </p>
+                  </div>
+                )}
+              </>
             )}
           </div>
         </>

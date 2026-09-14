@@ -36,6 +36,7 @@ interface HeaderProps {
   hasUnreadNotifications?: boolean;
   unreadNotificationsCount?: number;
   hasUnreadRequests?: boolean;
+  myOutgoingRequests?: Set<string>;
   onNavigateHome?: () => void;
   onNavigateFriends?: () => void;
   onNavigateProfile?: () => void;
@@ -58,6 +59,7 @@ export function Header({
   hasUnreadNotifications = false,
   unreadNotificationsCount = 0,
   hasUnreadRequests = false,
+  myOutgoingRequests = new Set(),
   onNavigateHome,
   onNavigateFriends,
   onNavigateProfile,
@@ -71,6 +73,7 @@ export function Header({
 }: HeaderProps) {
   const { profile, user, logout } = useAuth();
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   // Search state
@@ -148,14 +151,20 @@ export function Header({
   // Filter users based on debounced search
   const searchResults = useMemo(() => {
     if (!debouncedQuery) return [];
-    const q = debouncedQuery.toLowerCase();
+    const q = debouncedQuery.toLowerCase().trim();
+    const cleanQ = q.replace(/^@/, '');
 
     return allUsers
       .filter((u) => u.uid !== currentUid)
       .filter((u) => {
-        const handle = u.username.toLowerCase();
+        const handle = (u.username || '').toLowerCase().replace(/^@/, '');
         const display = (u.displayName || '').toLowerCase();
-        return handle.includes(q) || display.includes(q);
+        return (
+          handle.includes(cleanQ) ||
+          display.includes(cleanQ) ||
+          handle.includes(q) ||
+          display.includes(q)
+        );
       })
       .map((targetUser) => {
         const iFollow = myFollowing.has(targetUser.uid);
@@ -365,6 +374,8 @@ export function Header({
                             targetUsername={targetUser.username}
                             iFollow={iFollow}
                             followsMe={followsMe}
+                            isPrivate={Boolean(targetUser.conta_privada || (targetUser as any).isPrivate)}
+                            isRequested={myOutgoingRequests.has(targetUser.uid)}
                             size="sm"
                             onShowToast={onShowToast}
                           />
@@ -579,7 +590,7 @@ export function Header({
                       type="button"
                       onClick={() => {
                         setDropdownOpen(false);
-                        logout();
+                        setShowLogoutConfirm(true);
                       }}
                       className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-rose-600 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer"
                     >
@@ -613,6 +624,54 @@ export function Header({
           </div>
         )}
       </div>
+
+      {/* Logout Confirmation Dialog */}
+      {showLogoutConfirm && (
+        <div
+          id="header-logout-confirm-modal"
+          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4"
+          onClick={() => setShowLogoutConfirm(false)}
+        >
+          <div
+            className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl border border-gray-100 text-center space-y-4 animate-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="w-12 h-12 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center mx-auto">
+              <LogOut className="w-6 h-6 stroke-[2.2]" />
+            </div>
+
+            <div className="space-y-1">
+              <h3 className="text-lg font-bold text-gray-900 tracking-tight">
+                Tem certeza que deseja sair?
+              </h3>
+              <p className="text-xs text-gray-500 leading-relaxed">
+                Você precisará fazer login novamente para acessar seus feeds, conversas e notificações na VYBE.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowLogoutConfirm(false)}
+                className="flex-1 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-semibold rounded-xl transition-colors cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                id="btn-header-confirm-logout"
+                type="button"
+                onClick={() => {
+                  setShowLogoutConfirm(false);
+                  logout();
+                }}
+                className="flex-1 py-2.5 bg-[#DC2626] hover:bg-rose-700 text-white text-xs font-semibold rounded-xl shadow-xs transition-colors cursor-pointer"
+              >
+                Sair da conta
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </header>
   );
 }

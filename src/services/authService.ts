@@ -30,9 +30,17 @@ import { UserProfile } from '../types/user';
 export async function isEmailAvailable(email: string): Promise<boolean> {
   const cleanEmail = email.toLowerCase().trim();
   if (!cleanEmail) return false;
-  const q = query(collection(db, 'users'), where('email', '==', cleanEmail), limit(1));
-  const snap = await getDocs(q);
-  return snap.empty;
+  try {
+    const q = query(collection(db, 'users'), where('email', '==', cleanEmail), limit(1));
+    const snap = await getDocs(q);
+    return snap.empty;
+  } catch (err: any) {
+    // When an unauthenticated user registers, querying the /users collection is denied by Firestore rules.
+    // Return true so the onboarding flow proceeds to completion.
+    // Firebase Auth's createUserWithEmailAndPassword will reliably enforce unique emails on creation.
+    console.warn('Could not check email availability via Firestore (returning true for unauthenticated check):', err);
+    return true;
+  }
 }
 
 export async function isUsernameAvailable(username: string): Promise<boolean> {

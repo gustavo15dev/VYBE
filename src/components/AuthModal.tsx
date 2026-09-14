@@ -25,7 +25,7 @@ import {
   Check,
   X,
 } from 'lucide-react';
-import { db } from '../lib/firebase';
+import { db, auth } from '../lib/firebase';
 import { collection, getDocs, query, limit, doc, setDoc } from 'firebase/firestore';
 
 const COUNTRIES = [
@@ -348,8 +348,8 @@ export function AuthModal({
         setRegStep(2);
       }
     } catch (err) {
-      console.error('Error validating email availability:', err);
-      setRegEmailError('Não foi possível verificar a disponibilidade do e-mail. Tente novamente.');
+      console.warn('Error during preliminary email check, proceeding to step 2:', err);
+      setRegStep(2);
     } finally {
       setCheckingEmail(false);
     }
@@ -435,10 +435,21 @@ export function AuthModal({
     setIsSubmitting(true);
 
     try {
+      const d = parseInt(regBirthDay);
+      const m = MONTHS.indexOf(regBirthMonth) + 1;
+      const y = parseInt(regBirthYear);
+
+      if (isNaN(d) || isNaN(y) || calculateAge(d, m, y) < 13) {
+        setErrorMessage('Você precisa ter pelo menos 13 anos para criar uma conta na VYBE.');
+        setIsSubmitting(false);
+        setRegStep(3);
+        return;
+      }
+
       const formattedBirthDate = `${regBirthYear}-${String(MONTHS.indexOf(regBirthMonth) + 1).padStart(2, '0')}-${String(regBirthDay).padStart(2, '0')}`;
       
       // Complete signup
-      await registerWithEmail({
+      const newProfile = await registerWithEmail({
         displayName: regUsername.toLowerCase().trim(),
         username: regUsername.toLowerCase().trim(),
         email: regEmail.trim(),
@@ -448,12 +459,12 @@ export function AuthModal({
       });
 
       // Write any selected follows
-      const currentUser = authCurrentUser();
-      if (currentUser && !skipFollows && selectedFollows.length > 0) {
+      const currentUid = newProfile?.uid || auth.currentUser?.uid;
+      if (currentUid && !skipFollows && selectedFollows.length > 0) {
         for (const targetUid of selectedFollows) {
-          const followId = `${currentUser.uid}_${targetUid}`;
+          const followId = `${currentUid}_${targetUid}`;
           await setDoc(doc(db, 'follows', followId), {
-            followerUid: currentUser.uid,
+            followerUid: currentUid,
             followingUid: targetUid,
             createdAt: new Date().toISOString(),
           }).catch(err => console.warn('Error saving onboarding follow:', err));
@@ -464,15 +475,26 @@ export function AuthModal({
       await refreshProfile();
     } catch (err: any) {
       console.error('Error completing onboarding signup:', err);
-      setErrorMessage(err.message || 'Houve um erro ao salvar o seu cadastro. Tente novamente.');
+      if (err.code === 'auth/email-already-in-use') {
+        setRegStep(1);
+        setRegEmailError('Este e-mail já está cadastrado por outro usuário.');
+        setErrorMessage('Este e-mail já está cadastrado. Faça login ou use outro e-mail.');
+      } else if (err.code === 'auth/invalid-email') {
+        setRegStep(1);
+        setRegEmailError('O formato do e-mail é inválido.');
+        setErrorMessage('Por favor, digite um e-mail válido.');
+      } else if (err.code === 'auth/weak-password') {
+        setRegStep(2);
+        setErrorMessage('A senha é muito fraca. Ela deve conter pelo menos 8 caracteres.');
+      } else if (err.message && err.message.includes('nome de usuário já está em uso')) {
+        setRegStep(4);
+        setErrorMessage('Este nome de usuário já está em uso. Por favor, escolha outro.');
+      } else {
+        setErrorMessage(err.message || 'Houve um erro ao salvar o seu cadastro. Tente novamente.');
+      }
     } finally {
       setIsSubmitting(false);
     }
-  };
-
-  const authCurrentUser = () => {
-    const { user } = useAuth();
-    return user;
   };
 
   // Helper sanitizer for username typing
@@ -976,8 +998,18 @@ export function AuthModal({
                       placeholder="Ano"
                       value={regBirthYear}
                       onChange={(e) => {
-                        setRegBirthYear(e.target.value);
+                        const val = e.target.value;
+                        setRegBirthYear(val);
                         setRegBirthError(null);
+                        const y = parseInt(val);
+                        const d = parseInt(regBirthDay) || 1;
+                        const m = MONTHS.indexOf(regBirthMonth) + 1;
+                        if (!isNaN(y) && val.length === 4) {
+                          const age = calculateAge(d, m, y);
+                          if (age < 13) {
+                            setRegBirthError('Você precisa ter pelo menos 13 anos para usar a VYBE.');
+                          }
+                        }
                       }}
                       className="w-full px-3 py-2.5 bg-[#F9FBFC] border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#548687] transition-colors"
                     />
@@ -1013,6 +1045,7 @@ export function AuthModal({
 
               <button
                 type="submit"
+                disabled={Boolean(regBirthError) || (Boolean(regBirthYear) && regBirthYear.length === 4 && calculateAge(parseInt(regBirthDay) || 1, MONTHS.indexOf(regBirthMonth) + 1, parseInt(regBirthYear)) < 13)}
                 className="w-full py-3 px-4 bg-[#548687] hover:bg-[#457273] text-white font-semibold text-sm rounded-xl transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
               >
                 <span>Continuar</span>

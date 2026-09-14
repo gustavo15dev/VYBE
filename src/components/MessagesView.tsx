@@ -45,6 +45,7 @@ import { optimizeImage } from '../utils/mediaOptimizer';
 interface MessagesViewProps {
   allUsers?: UserProfile[];
   myFollowing?: Set<string>;
+  initialTargetUid?: string | null;
   onSelectUser?: (uid: string) => void;
   onOpenPostDetail?: (post: PostItem) => void;
   onShowToast?: (msg: string, type?: 'info' | 'success' | 'error') => void;
@@ -53,6 +54,7 @@ interface MessagesViewProps {
 export function MessagesView({
   allUsers = [],
   myFollowing = new Set(),
+  initialTargetUid = null,
   onSelectUser,
   onOpenPostDetail,
   onShowToast,
@@ -94,6 +96,13 @@ export function MessagesView({
     });
     return () => unsub();
   }, [profile?.uid]);
+
+  // Auto-open target user conversation if requested
+  useEffect(() => {
+    if (!initialTargetUid || !profile?.uid || initialTargetUid === profile.uid) return;
+    const targetUser = usersMap.get(initialTargetUid) || ({ uid: initialTargetUid, username: 'usuário' } as UserProfile);
+    handleStartIndividualChat(targetUser);
+  }, [initialTargetUid, profile?.uid]);
 
   // Separate regular conversations from pending solicitations
   const { regularConversations, pendingSolicitations, myPendingRequests } = useMemo(() => {

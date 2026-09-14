@@ -22,6 +22,7 @@ import {
   MoreHorizontal,
   Flag,
   UserX,
+  Bookmark,
 } from 'lucide-react';
 import { UserStoriesGroup, PostItem, ReportTargetType } from '../types/social';
 import { UserProfile } from '../types/user';
@@ -31,6 +32,8 @@ import {
   subscribeActiveStories,
   subscribePosts,
   togglePostLike,
+  toggleSavePost,
+  subscribeSavedPostIds,
   respondToCollaborationInvite,
   STORY_VIEWED_EVENT,
   getLocalViewedStoryIds,
@@ -82,6 +85,7 @@ export function HomeFeed({
   const [myGroup, setMyGroup] = useState<UserStoriesGroup | null>(null);
   const [posts, setPosts] = useState<PostItem[]>([]);
   const [loadingPosts, setLoadingPosts] = useState(true);
+  const [savedPostIds, setSavedPostIds] = useState<Set<string>>(new Set());
   const [expandedCollabsPostId, setExpandedCollabsPostId] = useState<string | null>(null);
   const [activePostMenuId, setActivePostMenuId] = useState<string | null>(null);
 
@@ -151,6 +155,15 @@ export function HomeFeed({
     return () => unsubscribe();
   }, []);
 
+  // Subscribe to saved posts for current user
+  useEffect(() => {
+    if (!user?.uid) return;
+    const unsub = subscribeSavedPostIds(user.uid, (ids) => {
+      setSavedPostIds(ids);
+    });
+    return () => unsub();
+  }, [user?.uid]);
+
   // Format relative time
   const formatTime = (iso: string) => {
     const diffMs = Date.now() - new Date(iso).getTime();
@@ -167,7 +180,7 @@ export function HomeFeed({
   const handleMyStoryClick = () => {
     if (myGroup && myGroup.stories.length > 0) {
       // If user has stories, open viewer with own story as first
-      const allGroups = [myGroup, ...otherGroups];
+      const allGroups = [myGroup, ...visibleOtherGroups];
       onOpenStoryViewer(allGroups, 0);
     } else {
       // If user has no story, open creator directly
@@ -177,9 +190,29 @@ export function HomeFeed({
 
   // When clicking on another followed user's story circle
   const handleOtherStoryClick = (clickedIndex: number) => {
-    const allGroups = myGroup ? [myGroup, ...otherGroups] : otherGroups;
-    const actualIndex = myGroup ? clickedIndex + 1 : clickedIndex;
+    const hasMyStory = Boolean(myGroup && myGroup.stories.length > 0);
+    const allGroups = hasMyStory ? [myGroup!, ...visibleOtherGroups] : visibleOtherGroups;
+    const actualIndex = hasMyStory ? clickedIndex + 1 : clickedIndex;
     onOpenStoryViewer(allGroups, actualIndex);
+  };
+
+  const handleToggleSavePost = async (post: PostItem) => {
+    if (!user?.uid) return;
+    const isCurrentlySaved = savedPostIds.has(post.id);
+    try {
+      const nowSaved = await toggleSavePost(user.uid, post.id, isCurrentlySaved);
+      if (onShowToast) {
+        onShowToast(
+          nowSaved ? 'Publicação salva com sucesso!' : 'Publicação removida dos salvos.',
+          'success'
+        );
+      }
+    } catch (err) {
+      console.error('Error toggling save post:', err);
+      if (onShowToast) {
+        onShowToast('Erro ao salvar publicação.', 'error');
+      }
+    }
   };
 
   const handleCollabResponse = async (postId: string, response: 'aceito' | 'recusado') => {
@@ -747,7 +780,7 @@ export function HomeFeed({
                   </button>
                 </div>
 
-                {/* Post Action Bar (Like, Comment, Share) */}
+                {/* Post Action Bar (Like, Comment, Share, Save) */}
                 <div className="px-4 py-3 border-t border-gray-100 flex items-center justify-between text-gray-600">
                   <div className="flex items-center gap-4">
                     <button
@@ -777,22 +810,39 @@ export function HomeFeed({
                           : 'Comentar'}
                       </span>
                     </button>
+
+                    <button
+                      id={`btn-share-post-${post.id}`}
+                      type="button"
+                      onClick={() => {
+                        if (onSharePost) {
+                          onSharePost(post);
+                        } else if (onShowToast) {
+                          onShowToast('Link da publicação copiado!', 'success');
+                        }
+                      }}
+                      className="flex items-center gap-1.5 text-xs font-semibold text-gray-600 hover:text-gray-900 transition-colors cursor-pointer"
+                      title="Compartilhar por mensagem"
+                    >
+                      <Send className="w-4.5 h-4.5" />
+                      <span className="hidden sm:inline">Compartilhar</span>
+                    </button>
                   </div>
 
                   <button
-                    id={`btn-share-post-${post.id}`}
+                    id={`btn-save-post-${post.id}`}
                     type="button"
-                    onClick={() => {
-                      if (onSharePost) {
-                        onSharePost(post);
-                      } else if (onShowToast) {
-                        onShowToast('Link da publicação copiado!', 'success');
-                      }
-                    }}
-                    className="p-1 text-gray-500 hover:text-gray-900 transition-colors cursor-pointer"
-                    title="Compartilhar por mensagem"
+                    onClick={() => handleToggleSavePost(post)}
+                    className="p-1 text-gray-500 hover:text-[#548687] transition-colors cursor-pointer"
+                    title={savedPostIds.has(post.id) ? 'Remover dos salvos' : 'Salvar publicação'}
                   >
-                    <Send className="w-4.5 h-4.5" />
+                    <Bookmark
+                      className={`w-5 h-5 transition-transform active:scale-125 ${
+                        savedPostIds.has(post.id)
+                          ? 'fill-[#548687] text-[#548687]'
+                          : 'text-gray-600 hover:text-gray-900'
+                      }`}
+                    />
                   </button>
                 </div>
               </article>

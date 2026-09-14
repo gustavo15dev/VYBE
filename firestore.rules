@@ -79,6 +79,29 @@ service cloud.firestore {
       allow update, delete: if request.auth != null;
     }
 
+    // Mencao (Mentions tracking)
+    match /mencao/{mencaoId} {
+      allow read: if request.auth != null;
+      allow create, update, delete: if request.auth != null;
+    }
+
+    // Hashtags and post_hashtag junction
+    match /hashtags/{hashtagId} {
+      allow read: if true;
+      allow create, update, delete: if request.auth != null;
+    }
+
+    match /post_hashtag/{postHashtagId} {
+      allow read: if true;
+      allow create, update, delete: if request.auth != null;
+    }
+
+    // Salvos (Saved Posts)
+    match /salvos/{salvoId} {
+      allow read: if request.auth != null;
+      allow create, update, delete: if request.auth != null;
+    }
+
     // Denuncias
     match /denuncias/{denunciaId} {
       allow read: if request.auth != null;

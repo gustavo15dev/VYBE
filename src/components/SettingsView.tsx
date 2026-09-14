@@ -1,14 +1,19 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { UserProfile, UserNotificationPreferences } from '../types/user';
-import { collection, query, where, getDocs, setDoc, doc } from 'firebase/firestore';
+import { collection, query, where, getDocs, setDoc, doc, getDoc } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
 import {
+  getUserProfile,
   updateUserProfile,
   isUsernameAvailable,
   changeUserPassword,
   deleteAccountPermanently,
 } from '../services/authService';
-import { blockUser as blockUserSocial, unblockUser as unblockUserSocial } from '../services/socialService';
+import {
+  blockUser as blockUserSocial,
+  unblockUser as unblockUserSocial,
+  subscribeMyBlockedUsers,
+} from '../services/socialService';
 import { optimizeImage } from '../utils/mediaOptimizer';
 import {
   User,
@@ -108,6 +113,8 @@ export function SettingsView({
 
   // Blocked Users State
   const [blockedUids, setBlockedUids] = useState<string[]>(currentUserProfile.blockedUsers || []);
+  const [blockedUsersDetails, setBlockedUsersDetails] = useState<UserProfile[]>([]);
+  const [loadingBlockedUsers, setLoadingBlockedUsers] = useState(false);
   const [blockInput, setBlockInput] = useState('');
   const [blockingUser, setBlockingUser] = useState(false);
 
@@ -242,6 +249,49 @@ export function SettingsView({
     setTwoFactorEnabled(currentUserProfile.twoFactorEnabled ?? false);
     setBlockedUids(currentUserProfile.blockedUsers || []);
   }, [currentUserProfile]);
+
+  // Real-time synchronization of blocked users
+  useEffect(() => {
+    if (!currentUserProfile?.uid) return;
+
+    const unsub = subscribeMyBlockedUsers(currentUserProfile.uid, async (blockedSet) => {
+      const uids = Array.from(blockedSet);
+      setBlockedUids(uids);
+
+      setLoadingBlockedUsers(true);
+      try {
+        const list: UserProfile[] = [];
+        for (const uid of uids) {
+          const inAllUsers = allUsers.find((u) => u.uid === uid);
+          if (inAllUsers) {
+            list.push(inAllUsers);
+          } else {
+            const profile = await getUserProfile(uid);
+            if (profile) {
+              list.push(profile);
+            } else {
+              list.push({
+                uid,
+                username: `user_${uid.slice(0, 6)}`,
+                displayName: 'Usuário Bloqueado',
+                email: '',
+                birthDate: '',
+                country: 'BR',
+                createdAt: '',
+              });
+            }
+          }
+        }
+        setBlockedUsersDetails(list);
+      } catch (err) {
+        console.error('Error resolving blocked users details:', err);
+      } finally {
+        setLoadingBlockedUsers(false);
+      }
+    });
+
+    return () => unsub();
+  }, [currentUserProfile?.uid, allUsers]);
 
   // Debounced real-time username validation
   useEffect(() => {
@@ -493,6 +543,7 @@ export function SettingsView({
       await unblockUserSocial(currentUserProfile.uid, uidToUnblock);
       const updatedList = blockedUids.filter((id) => id !== uidToUnblock);
       setBlockedUids(updatedList);
+      setBlockedUsersDetails((prev) => prev.filter((u) => u.uid !== uidToUnblock));
       onProfileUpdated({
         ...currentUserProfile,
         blockedUsers: updatedList,
@@ -510,9 +561,24 @@ export function SettingsView({
     const handleToBlock = blockInput.trim().toLowerCase().replace(/^@/, '');
     if (!handleToBlock) return;
 
-    const targetUser = allUsers.find(
+    let targetUser: UserProfile | undefined = allUsers.find(
       (u) => u.username.toLowerCase() === handleToBlock
     );
+
+    if (!targetUser) {
+      try {
+        const unameDoc = await getDoc(doc(db, 'usernames', handleToBlock));
+        if (unameDoc.exists()) {
+          const targetUid = unameDoc.data()?.uid;
+          if (targetUid) {
+            const fetched = await getUserProfile(targetUid);
+            if (fetched) targetUser = fetched;
+          }
+        }
+      } catch (err) {
+        console.error('Error searching username doc:', err);
+      }
+    }
 
     if (!targetUser) {
       onShowToast?.(`Usuário @${handleToBlock} não foi encontrado.`, 'error');
@@ -534,6 +600,10 @@ export function SettingsView({
       await blockUserSocial(currentUserProfile.uid, targetUser.uid);
       const updatedList = [...blockedUids, targetUser.uid];
       setBlockedUids(updatedList);
+      setBlockedUsersDetails((prev) => {
+        if (prev.some((p) => p.uid === targetUser!.uid)) return prev;
+        return [...prev, targetUser!];
+      });
       onProfileUpdated({
         ...currentUserProfile,
         blockedUsers: updatedList,
@@ -549,7 +619,10 @@ export function SettingsView({
   };
 
   // Blocked users list
-  const blockedUsersList = allUsers.filter((u) => blockedUids.includes(u.uid));
+  const blockedUsersList =
+    blockedUsersDetails.length > 0
+      ? blockedUsersDetails
+      : allUsers.filter((u) => blockedUids.includes(u.uid));
 
   const avatarInitial =
     displayName[0]?.toUpperCase() || username[0]?.toUpperCase() || 'V';
@@ -702,7 +775,7 @@ export function SettingsView({
             </button>
 
             {/* 6. Sair (Red Highlight Logout) */}
-            <div className="pt-2">
+            <div className="pt-2 space-y-1">
               <button
                 id="btn-settings-logout"
                 type="button"
@@ -711,6 +784,21 @@ export function SettingsView({
               >
                 <LogOut className="w-4 h-4 shrink-0 text-[#DC2626]" />
                 <span>Sair</span>
+              </button>
+
+              <button
+                id="btn-settings-delete-account-nav"
+                type="button"
+                onClick={() => {
+                  setDeleteError(null);
+                  setDeleteConfirmationText('');
+                  setDeletePasswordInput('');
+                  setShowDeleteConfirm(true);
+                }}
+                className="w-full flex items-center gap-3 px-4 py-2.5 rounded-2xl text-xs font-semibold text-rose-500 hover:bg-rose-50 hover:text-rose-700 transition-colors cursor-pointer text-left"
+              >
+                <UserX className="w-3.5 h-3.5 shrink-0 text-rose-500" />
+                <span>Excluir conta</span>
               </button>
             </div>
           </nav>

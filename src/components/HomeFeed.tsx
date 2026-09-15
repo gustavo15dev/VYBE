@@ -28,6 +28,7 @@ import { UserStoriesGroup, PostItem, ReportTargetType } from '../types/social';
 import { UserProfile } from '../types/user';
 import { FormattedText } from './FormattedText';
 import { VerifiedBadge } from './VerifiedBadge';
+import { FollowButton } from './FollowButton';
 import {
   subscribeActiveStories,
   subscribePosts,
@@ -38,6 +39,8 @@ import {
   STORY_VIEWED_EVENT,
   getLocalViewedStoryIds,
   formatEngagementCount,
+  subscribeUserViewedPostIds,
+  composeHybridFeed,
 } from '../services/socialService';
 import { usePostViewObserver } from '../hooks/usePostViewObserver';
 
@@ -88,25 +91,36 @@ export function HomeFeed({
   const [savedPostIds, setSavedPostIds] = useState<Set<string>>(new Set());
   const [expandedCollabsPostId, setExpandedCollabsPostId] = useState<string | null>(null);
   const [activePostMenuId, setActivePostMenuId] = useState<string | null>(null);
+  const [viewedPostIds, setViewedPostIds] = useState<Set<string>>(new Set());
+
+  // Subscribe to post IDs viewed by the current user to implement "evitar repetição"
+  useEffect(() => {
+    if (!user?.uid) return;
+    const unsub = subscribeUserViewedPostIds(user.uid, (ids) => {
+      setViewedPostIds(ids);
+    });
+    return () => unsub();
+  }, [user?.uid]);
 
   // Filter out posts and stories from blocked users or auto-hidden posts
   const visibleOtherGroups = otherGroups.filter(
     (g) => !allBlockedUids.has(g.authorUid)
   );
 
-  const visiblePosts = posts.filter((p) => {
-    if (allBlockedUids.has(p.authorUid) || (p as any).auto_hidden) {
-      return false;
-    }
-    if (p.authorUid === user?.uid) {
-      return true;
-    }
-    const author = allUsers?.find((u) => u.uid === p.authorUid);
-    if (author?.conta_privada) {
-      return myFollowing.has(p.authorUid);
-    }
-    return true;
-  });
+  // Simplified Feed Composition Algorithm:
+  // - ~70-80% following / ~20-30% suggestions (interleaved 3:1)
+  // - Evitar repetição: prioritizes unseen posts, fallback to seen if low inventory
+  // - Suggestions come exclusively from public accounts with recent popular engagement
+  const visiblePosts = React.useMemo(() => {
+    return composeHybridFeed({
+      posts,
+      currentUid: user?.uid || '',
+      myFollowing,
+      allBlockedUids,
+      allUsers,
+      viewedPostIds,
+    });
+  }, [posts, user?.uid, myFollowing, allBlockedUids, allUsers, viewedPostIds]);
   useEffect(() => {
     if (!user?.uid) return;
 
@@ -664,6 +678,29 @@ export function HomeFeed({
                   </div>
 
                   <div className="flex items-center gap-2">
+                    {/* Suggestion Discovery Badge */}
+                    {Boolean((post as any).isSuggestion) && (
+                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#548687] bg-[#548687]/10 px-2.5 py-1 rounded-full border border-[#548687]/20">
+                        <Sparkles className="w-3 h-3 text-[#548687]" />
+                        <span>Sugestão</span>
+                      </span>
+                    )}
+
+                    {/* Quick follow button if it's a suggested creator */}
+                    {Boolean((post as any).isSuggestion) &&
+                      post.authorUid !== user?.uid &&
+                      !myFollowing.has(post.authorUid) && (
+                        <FollowButton
+                          currentUid={user?.uid || ''}
+                          targetUid={post.authorUid}
+                          targetUsername={post.authorUsername}
+                          iFollow={false}
+                          followsMe={false}
+                          size="sm"
+                          onShowToast={onShowToast}
+                        />
+                      )}
+
                     {/* Status badge if author created collab and is pending */}
                     {pendingCollabs.length > 0 && (
                       <span className="text-[10px] font-medium text-amber-700 bg-amber-50 border border-amber-200/80 px-2 py-0.5 rounded-full">

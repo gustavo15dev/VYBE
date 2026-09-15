@@ -21,6 +21,7 @@ import {
   fetchExploreFeed,
   fetchSuggestedUsersForExplore,
   toggleFollowUser,
+  subscribeUserViewedPostIds,
 } from '../services/socialService';
 import { FollowButton } from './FollowButton';
 import { VerifiedBadge } from './VerifiedBadge';
@@ -65,6 +66,16 @@ export function ExploreView({
   const [refreshing, setRefreshing] = useState(false);
   const [mediaFilter, setMediaFilter] = useState<ExploreMediaTypeFilter>('all');
   const [followLoadingUid, setFollowLoadingUid] = useState<string | null>(null);
+  const [viewedPostIds, setViewedPostIds] = useState<Set<string>>(new Set());
+
+  // Listen to viewed posts to prioritize unseen content
+  useEffect(() => {
+    if (!user?.uid) return;
+    const unsub = subscribeUserViewedPostIds(user.uid, (ids) => {
+      setViewedPostIds(ids);
+    });
+    return () => unsub();
+  }, [user?.uid]);
 
   // Load explore items
   const loadExploreData = useCallback(
@@ -82,7 +93,7 @@ export function ExploreView({
             : 'all';
 
         const [fetchedPosts, fetchedUsers] = await Promise.all([
-          fetchExploreFeed(user.uid, myFollowing, allFollows, filterType),
+          fetchExploreFeed(user.uid, myFollowing, allFollows, filterType, viewedPostIds),
           fetchSuggestedUsersForExplore(user.uid, myFollowing, allUsers, allFollows),
         ]);
 
@@ -101,7 +112,7 @@ export function ExploreView({
         setRefreshing(false);
       }
     },
-    [user?.uid, myFollowing, allUsers, allFollows, mediaFilter, onShowToast]
+    [user?.uid, myFollowing, allUsers, allFollows, mediaFilter, viewedPostIds, onShowToast]
   );
 
   useEffect(() => {

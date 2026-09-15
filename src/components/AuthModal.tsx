@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import { db, auth } from '../lib/firebase';
 import { collection, getDocs, query, limit, doc, setDoc } from 'firebase/firestore';
+import { toggleFollowUser as serviceToggleFollowUser, createFollowRequest } from '../services/socialService';
 
 const COUNTRIES = [
   'Brasil',
@@ -421,7 +422,7 @@ export function AuthModal({
     setRegStep(5);
   };
 
-  const toggleFollowUser = (uid: string) => {
+  const toggleSelectFollow = (uid: string) => {
     if (selectedFollows.includes(uid)) {
       setSelectedFollows(selectedFollows.filter(id => id !== uid));
     } else {
@@ -458,16 +459,21 @@ export function AuthModal({
         country: regCountry,
       });
 
-      // Write any selected follows
+      // Write any selected follows or follow requests
       const currentUid = newProfile?.uid || auth.currentUser?.uid;
       if (currentUid && !skipFollows && selectedFollows.length > 0) {
         for (const targetUid of selectedFollows) {
-          const followId = `${currentUid}_${targetUid}`;
-          await setDoc(doc(db, 'follows', followId), {
-            followerUid: currentUid,
-            followingUid: targetUid,
-            createdAt: new Date().toISOString(),
-          }).catch(err => console.warn('Error saving onboarding follow:', err));
+          const targetAcc = suggestedAccounts.find((a) => a.uid === targetUid);
+          const isTargetPrivate = Boolean(targetAcc?.conta_privada || targetAcc?.isPrivate);
+          if (isTargetPrivate) {
+            await createFollowRequest(currentUid, targetUid, newProfile || undefined).catch((err) =>
+              console.warn('Error saving onboarding follow request:', err)
+            );
+          } else {
+            await serviceToggleFollowUser(currentUid, targetUid, false, newProfile || undefined).catch((err) =>
+              console.warn('Error saving onboarding follow:', err)
+            );
+          }
         }
       }
 
@@ -1135,6 +1141,7 @@ export function AuthModal({
                   <div className="space-y-3 max-h-[250px] overflow-y-auto pr-1">
                     {suggestedAccounts.map((account) => {
                       const isSelected = selectedFollows.includes(account.uid);
+                      const isPrivate = Boolean(account.conta_privada || account.isPrivate);
                       return (
                         <div
                           key={account.uid}
@@ -1148,33 +1155,40 @@ export function AuthModal({
                             {account.displayName ? account.displayName[0] : account.username[0]}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <h4 className="text-xs font-bold text-gray-800 truncate">
-                              {account.displayName || account.username}
-                            </h4>
+                            <div className="flex items-center gap-1.5">
+                              <h4 className="text-xs font-bold text-gray-800 truncate">
+                                {account.displayName || account.username}
+                              </h4>
+                              {isPrivate && (
+                                <Lock className="w-3 h-3 text-gray-400 shrink-0" title="Conta privada" />
+                              )}
+                            </div>
                             <p className="text-[10px] text-[#548687] font-medium truncate mb-0.5">
                               @{account.username}
                             </p>
                             <p className="text-[10px] text-gray-400 truncate leading-tight">
-                              {account.bio || 'Criador na rede social VYBE.'}
+                              {account.bio || (isPrivate ? 'Conta privada na rede VYBE.' : 'Criador na rede social VYBE.')}
                             </p>
                           </div>
                           
                           <button
                             type="button"
-                            onClick={() => toggleFollowUser(account.uid)}
+                            onClick={() => toggleSelectFollow(account.uid)}
                             className={`px-3 py-1.5 rounded-full text-[11px] font-bold transition-all shrink-0 cursor-pointer ${
                               isSelected
                                 ? 'bg-white text-[#548687] border border-[#548687]/30 flex items-center gap-1 shadow-xs'
+                                : isPrivate
+                                ? 'bg-gray-800 hover:bg-gray-900 text-white shadow-xs'
                                 : 'bg-[#548687] hover:bg-[#457273] text-white shadow-xs'
                             }`}
                           >
                             {isSelected ? (
                               <>
                                 <Check className="w-3 h-3 shrink-0" />
-                                <span>Seguindo</span>
+                                <span>{isPrivate ? 'Solicitado' : 'Seguindo'}</span>
                               </>
                             ) : (
-                              <span>Seguir</span>
+                              <span>{isPrivate ? 'Solicitar' : 'Seguir'}</span>
                             )}
                           </button>
                         </div>

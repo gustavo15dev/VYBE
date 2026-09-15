@@ -2329,7 +2329,8 @@ export async function fetchExploreFeed(
   currentUid: string,
   followingUids: Set<string>,
   allFollows: { followerUid: string; followingUid: string }[] = [],
-  filterMediaType?: 'all' | 'video' | 'image'
+  filterMediaType?: 'all' | 'video' | 'image',
+  viewedPostIds: Set<string> = new Set()
 ): Promise<PostItem[]> {
   try {
     const postsCol = collection(db, 'posts');
@@ -2427,9 +2428,6 @@ export async function fetchExploreFeed(
       });
     });
 
-    // Sort descending by calculated score
-    candidatePosts.sort((a, b) => b.score - a.score);
-
     // Fallback: If no candidate posts from third parties, show all available public posts so Explore is rich and functional
     if (candidatePosts.length === 0) {
       const fallbackPosts: PostItem[] = [];
@@ -2457,7 +2455,24 @@ export async function fetchExploreFeed(
       return fallbackPosts;
     }
 
-    return candidatePosts.map((cp) => cp.post);
+    // 3. Separate candidate posts into unseen and seen (evitar repetição)
+    const unseenCandidates: ExplorePostWithScore[] = [];
+    const seenCandidates: ExplorePostWithScore[] = [];
+
+    for (const cp of candidatePosts) {
+      if (viewedPostIds.has(cp.post.id)) {
+        seenCandidates.push(cp);
+      } else {
+        unseenCandidates.push(cp);
+      }
+    }
+
+    unseenCandidates.sort((a, b) => b.score - a.score);
+    seenCandidates.sort((a, b) => b.score - a.score);
+
+    // Prioritize unseen, but append seen as fallback so Explore grid remains robust
+    const combined = [...unseenCandidates, ...seenCandidates];
+    return combined.map((cp) => cp.post);
   } catch (err) {
     console.error('Error fetching explore feed:', err);
     return [];
@@ -2932,6 +2947,245 @@ export function subscribeOutgoingFollowRequests(
     }
   );
 }
+
+/**
+ * Real-time listener for post IDs already viewed by the current user (from 'visualizacoes' collection)
+ * Used to implement the "evitar repetição" rule in Feed and Explore.
+ */
+export function subscribeUserViewedPostIds(
+  userId: string,
+  callback: (viewedPostIds: Set<string>) => void
+) {
+  if (!userId) {
+    callback(new Set());
+    return () => {};
+  }
+
+  const viewsCol = collection(db, 'visualizacoes');
+  const q = query(viewsCol, where('usuario_id', '==', userId), limit(500));
+
+  return onSnapshot(
+    q,
+    (snap) => {
+      const set = new Set<string>();
+      snap.forEach((d) => {
+        const data = d.data();
+        if (data.post_id) {
+          set.add(data.post_id);
+        }
+      });
+      callback(set);
+    },
+    (err) => {
+      console.warn('Error listening to viewed posts:', err);
+      callback(new Set());
+    }
+  );
+}
+
+/**
+ * One-time fetch of post IDs already viewed by user
+ */
+export async function getUserViewedPostIds(userId: string): Promise<Set<string>> {
+  if (!userId) return new Set();
+  try {
+    const viewsCol = collection(db, 'visualizacoes');
+    const q = query(viewsCol, where('usuario_id', '==', userId), limit(500));
+    const snap = await getDocs(q);
+    const set = new Set<string>();
+    snap.forEach((d) => {
+      const data = d.data();
+      if (data.post_id) {
+        set.add(data.post_id);
+      }
+    });
+    return set;
+  } catch (err) {
+    console.warn('Error fetching user viewed posts:', err);
+    return new Set();
+  }
+}
+
+/**
+ * Feed post item with suggestion metadata
+ */
+export interface FeedPostItem extends PostItem {
+  isSuggestion?: boolean;
+}
+
+/**
+ * Composes the simplified VYBE Feed:
+ * 1. Composição do feed:
+ *    - ~70-80% de quem o usuário segue (+ posts do próprio usuário)
+ *    - ~20-30% de sugestões (contas públicas não seguidas para descoberta)
+ * 2. Regra de sugestão:
+ *    - Posts populares recentes (mais curtidos/comentados nas últimas 48h/7d) de contas públicas não seguidas
+ * 3. Regra de "evitar repetição":
+ *    - Prioriza posts que o usuário ainda não viu (posts_ja_vistos / visualizacoes)
+ *    - Fallback: se não houver posts não-vistos suficientes, completa com vistos para não travar o feed
+ * 4. Proporção fixa:
+ *    - Intercalação simples de 3 posts de seguidos para 1 de sugestão (75% / 25%)
+ */
+export function composeHybridFeed({
+  posts,
+  currentUid,
+  myFollowing,
+  allBlockedUids,
+  allUsers,
+  viewedPostIds,
+}: {
+  posts: PostItem[];
+  currentUid: string;
+  myFollowing: Set<string>;
+  allBlockedUids: Set<string>;
+  allUsers: UserProfile[];
+  viewedPostIds: Set<string>;
+}): FeedPostItem[] {
+  if (!posts || posts.length === 0) return [];
+
+  // Build lookup map for fast user checks
+  const userMap = new Map<string, UserProfile>();
+  if (allUsers) {
+    for (const u of allUsers) {
+      userMap.set(u.uid, u);
+    }
+  }
+
+  // Filter out blocked users or auto-hidden posts
+  const eligiblePosts = posts.filter((p) => {
+    if (allBlockedUids && allBlockedUids.has(p.authorUid)) return false;
+    if ((p as any).auto_hidden) return false;
+    return true;
+  });
+
+  // Separate into Following Pool vs Suggestions Pool
+  const followingPool: PostItem[] = [];
+  const suggestionsCandidatePool: PostItem[] = [];
+
+  for (const post of eligiblePosts) {
+    const isOwn = post.authorUid === currentUid;
+    const isFollowed = myFollowing.has(post.authorUid);
+    const author = userMap.get(post.authorUid);
+    const isPrivateAuthor = Boolean(author?.conta_privada || author?.isPrivate);
+
+    if (isOwn || isFollowed) {
+      // Allowed if own or followed
+      followingPool.push(post);
+    } else if (!isPrivateAuthor) {
+      // Must be an unfollowed, public account for suggestions
+      suggestionsCandidatePool.push(post);
+    }
+  }
+
+  // Order Following Pool by recency (createdAt desc)
+  followingPool.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+  // Rank Suggestions by popularity & recency (no complex AI, just recent engagement)
+  const now = Date.now();
+  const ONE_DAY = 24 * 60 * 60 * 1000;
+  suggestionsCandidatePool.sort((a, b) => {
+    const likesA = Array.isArray(a.likes) ? a.likes.length : (a.likesCount || 0);
+    const likesB = Array.isArray(b.likes) ? b.likes.length : (b.likesCount || 0);
+    const commA = a.commentsCount || 0;
+    const commB = b.commentsCount || 0;
+    const viewsA = a.viewsCount || 0;
+    const viewsB = b.viewsCount || 0;
+
+    const ageA = now - new Date(a.createdAt).getTime();
+    const ageB = now - new Date(b.createdAt).getTime();
+    const recencyBonusA = ageA < 2 * ONE_DAY ? 10 : ageA < 7 * ONE_DAY ? 5 : 0;
+    const recencyBonusB = ageB < 2 * ONE_DAY ? 10 : ageB < 7 * ONE_DAY ? 5 : 0;
+
+    const scoreA = likesA * 2 + commA * 3 + viewsA * 0.2 + recencyBonusA;
+    const scoreB = likesB * 2 + commB * 3 + viewsB * 0.2 + recencyBonusB;
+    return scoreB - scoreA;
+  });
+
+  // Apply "evitar repetição" (soft filter) for following pool:
+  // Prioritize unseen, but append seen as fallback so feed never starves
+  const unseenFollowing: PostItem[] = [];
+  const seenFollowing: PostItem[] = [];
+  for (const post of followingPool) {
+    if (viewedPostIds.has(post.id)) {
+      seenFollowing.push(post);
+    } else {
+      unseenFollowing.push(post);
+    }
+  }
+  const orderedFollowing = [...unseenFollowing, ...seenFollowing];
+
+  // Apply "evitar repetição" for suggestions pool
+  const unseenSuggestions: PostItem[] = [];
+  const seenSuggestions: PostItem[] = [];
+  for (const post of suggestionsCandidatePool) {
+    if (viewedPostIds.has(post.id)) {
+      seenSuggestions.push(post);
+    } else {
+      unseenSuggestions.push(post);
+    }
+  }
+  const orderedSuggestions = [...unseenSuggestions, ...seenSuggestions];
+
+  // If user doesn't follow anyone yet or has no posts from followings,
+  // feed becomes 100% suggestions for natural discovery!
+  if (orderedFollowing.length === 0) {
+    return orderedSuggestions.map((post) => ({ ...post, isSuggestion: true }));
+  }
+
+  // Interleave with ~75% following / ~25% suggestions (Ratio 3 : 1)
+  const result: FeedPostItem[] = [];
+  const addedIds = new Set<string>();
+
+  let fIdx = 0;
+  let sIdx = 0;
+
+  while (fIdx < orderedFollowing.length || sIdx < orderedSuggestions.length) {
+    // Take up to 3 posts from following pool
+    for (let i = 0; i < 3 && fIdx < orderedFollowing.length; i++) {
+      const p = orderedFollowing[fIdx++];
+      if (!addedIds.has(p.id)) {
+        addedIds.add(p.id);
+        result.push({ ...p, isSuggestion: false });
+      }
+    }
+
+    // Take 1 suggestion post (25% proportion)
+    if (sIdx < orderedSuggestions.length) {
+      const p = orderedSuggestions[sIdx++];
+      if (!addedIds.has(p.id)) {
+        addedIds.add(p.id);
+        result.push({ ...p, isSuggestion: true });
+      }
+    }
+
+    // If suggestions ran out, flush remaining following
+    if (sIdx >= orderedSuggestions.length && fIdx < orderedFollowing.length) {
+      while (fIdx < orderedFollowing.length) {
+        const p = orderedFollowing[fIdx++];
+        if (!addedIds.has(p.id)) {
+          addedIds.add(p.id);
+          result.push({ ...p, isSuggestion: false });
+        }
+      }
+      break;
+    }
+
+    // If following ran out, flush remaining suggestions
+    if (fIdx >= orderedFollowing.length && sIdx < orderedSuggestions.length) {
+      while (sIdx < orderedSuggestions.length) {
+        const p = orderedSuggestions[sIdx++];
+        if (!addedIds.has(p.id)) {
+          addedIds.add(p.id);
+          result.push({ ...p, isSuggestion: true });
+        }
+      }
+      break;
+    }
+  }
+
+  return result;
+}
+
 
 
 

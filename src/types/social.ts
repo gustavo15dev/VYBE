@@ -38,10 +38,15 @@ export interface UserStoriesGroup {
   latestCreatedAt: string;
 }
 
+export const REACTION_EMOJIS = ['❤️', '😂', '😮', '😢', '🔥', '👏'] as const;
+export type ReactionEmoji = typeof REACTION_EMOJIS[number];
+
 export interface CurtidaItem {
-  id: string;
+  id: string; // ${postId}_${usuario_id}
   post_id: string;
   usuario_id: string;
+  tipo: 'curtir' | 'reacao';
+  emoji: ReactionEmoji | null;
   criado_em: string;
 }
 
@@ -90,8 +95,15 @@ export interface PostItem {
   editado_em?: string; // timestamp de edição opcional
   likes: string[]; // likes
   likesCount?: number;
+  reactionsSummary?: Record<string, number>; // { '❤️': 10, '🔥': 4, ... }
+  userReactions?: Record<string, { tipo: 'curtir' | 'reacao'; emoji: ReactionEmoji | null }>;
   viewsCount?: number;
   commentsCount?: number;
+}
+
+export interface PostLikerProfile extends UserProfile {
+  reactionType?: 'curtir' | 'reacao';
+  reactionEmoji?: ReactionEmoji | null;
 }
 
 export interface UserRelationship {
@@ -196,6 +208,7 @@ export interface NotificationItem {
   post_id?: string | null;
   comentario_id?: string | null;
   conteudo_extra?: string | null; // e.g. snippet do comentário ou legenda
+  emoji?: ReactionEmoji | null;
   lida: boolean;
   criado_em: string;
 }
@@ -205,6 +218,7 @@ export interface AggregatedNotification {
   tipo: NotificationType;
   post_id?: string | null;
   comentario_id?: string | null;
+  emoji?: ReactionEmoji | null;
   usuario_origem_principal: {
     uid: string;
     username: string;

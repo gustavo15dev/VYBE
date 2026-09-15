@@ -14,6 +14,7 @@ import {
   arrayUnion,
   arrayRemove,
   limit,
+  deleteField,
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import {
@@ -37,6 +38,10 @@ import {
   ReportTargetType,
   ReportReason,
   FollowRequestItem,
+  ReactionEmoji,
+  REACTION_EMOJIS,
+  CurtidaItem,
+  PostLikerProfile,
 } from '../types/social';
 import { UserProfile } from '../types/user';
 import { extractHashtags, extractMentions } from '../utils/hashtagMention';
@@ -1198,7 +1203,180 @@ export async function deleteComment(commentId: string, postId: string): Promise<
 const sessionViewedPosts = new Set<string>();
 
 /**
- * Toggles like on post, synchronizing the 'curtidas' collection and post counters
+ * Formats top reactions for display (ordered by frequency, up to 3 overlapping emojis)
+ */
+export function getTopReactions(
+  reactionsSummary?: Record<string, number>,
+  totalLikesCount?: number
+): { emoji: ReactionEmoji; count: number }[] {
+  const summary = reactionsSummary || {};
+  const entries: { emoji: ReactionEmoji; count: number }[] = [];
+
+  for (const emoji of REACTION_EMOJIS) {
+    const count = typeof summary[emoji] === 'number' ? summary[emoji] : 0;
+    if (count > 0) {
+      entries.push({ emoji, count });
+    }
+  }
+
+  // Fallback: if no emoji breakdown yet but post has likes, default to ❤️
+  if (entries.length === 0 && totalLikesCount && totalLikesCount > 0) {
+    entries.push({ emoji: '❤️', count: totalLikesCount });
+  }
+
+  // Sort descending by count
+  entries.sort((a, b) => b.count - a.count);
+
+  return entries.slice(0, 3);
+}
+
+/**
+ * Sets or removes a post reaction (simple like or emoji reaction).
+ * Enforces strict exclusivity: 1 active reaction per user per post (replaces previous reaction).
+ */
+export async function setPostReaction(
+  postId: string,
+  uid: string,
+  targetReaction:
+    | { tipo: 'curtir'; emoji: null }
+    | { tipo: 'reacao'; emoji: ReactionEmoji }
+    | null,
+  userProfile?: UserProfile
+): Promise<void> {
+  if (!postId || !uid) return;
+
+  const postRef = doc(db, 'posts', postId);
+  const curtidaRef = doc(db, 'curtidas', `${postId}_${uid}`);
+
+  // Fetch current curtida to see existing state
+  let existingReaction: CurtidaItem | null = null;
+  try {
+    const curtidaSnap = await getDoc(curtidaRef);
+    if (curtidaSnap.exists()) {
+      existingReaction = curtidaSnap.data() as CurtidaItem;
+    }
+  } catch (err) {
+    console.warn('Error fetching existing curtida:', err);
+  }
+
+  // Read post doc for fallback check and author info
+  let postData: PostItem | null = null;
+  try {
+    const postSnap = await getDoc(postRef);
+    if (postSnap.exists()) {
+      postData = postSnap.data() as PostItem;
+      if (!existingReaction && Array.isArray(postData.likes) && postData.likes.includes(uid)) {
+        const stored = postData.userReactions?.[uid];
+        existingReaction = {
+          id: `${postId}_${uid}`,
+          post_id: postId,
+          usuario_id: uid,
+          tipo: stored?.tipo || 'curtir',
+          emoji: stored?.emoji || null,
+          criado_em: new Date().toISOString(),
+        };
+      }
+    }
+  } catch (err) {
+    console.warn('Error fetching post for reaction:', err);
+  }
+
+  const isAlreadyLiked = Boolean(existingReaction || (postData?.likes && postData.likes.includes(uid)));
+  const prevEmoji: ReactionEmoji = existingReaction?.emoji || '❤️';
+
+  // Check if toggling off (user selected same reaction again or target is null)
+  const isTogglingOff =
+    targetReaction === null ||
+    (existingReaction &&
+      ((targetReaction.tipo === 'curtir' && (!existingReaction.emoji || existingReaction.emoji === '❤️' || existingReaction.tipo === 'curtir')) ||
+        (targetReaction.tipo === 'reacao' && existingReaction.emoji === targetReaction.emoji)));
+
+  if (isTogglingOff) {
+    if (!isAlreadyLiked) return; // Nothing to remove
+
+    const postUpdates: any = {
+      likes: arrayRemove(uid),
+      likesCount: increment(-1),
+      [`userReactions.${uid}`]: deleteField(),
+    };
+    if (prevEmoji) {
+      postUpdates[`reactionsSummary.${prevEmoji}`] = increment(-1);
+    }
+
+    await updateDoc(postRef, postUpdates).catch((err) =>
+      console.warn('Error removing post reaction in post doc:', err)
+    );
+
+    try {
+      await deleteDoc(curtidaRef);
+    } catch (err) {
+      console.warn('Error deleting curtida doc:', err);
+    }
+    return;
+  }
+
+  // Adding or replacing reaction
+  const newTipo = targetReaction.tipo;
+  const newEmoji = targetReaction.emoji || '❤️';
+  const nowIso = new Date().toISOString();
+
+  // Save to curtidas table (strictly 1 doc per user per post with ID ${postId}_${uid})
+  try {
+    await setDoc(curtidaRef, {
+      id: `${postId}_${uid}`,
+      post_id: postId,
+      usuario_id: uid,
+      tipo: newTipo,
+      emoji: targetReaction.emoji || null,
+      criado_em: nowIso,
+    });
+  } catch (err) {
+    console.warn('Error saving curtida doc:', err);
+  }
+
+  const postUpdates: any = {
+    [`userReactions.${uid}`]: {
+      tipo: newTipo,
+      emoji: targetReaction.emoji || null,
+    },
+  };
+
+  if (!isAlreadyLiked) {
+    // Brand new reaction/like
+    postUpdates.likes = arrayUnion(uid);
+    postUpdates.likesCount = increment(1);
+    postUpdates[`reactionsSummary.${newEmoji}`] = increment(1);
+  } else {
+    // Replacing previous reaction (exclusivity: count stays constant, summary shifts)
+    if (prevEmoji !== newEmoji) {
+      postUpdates[`reactionsSummary.${prevEmoji}`] = increment(-1);
+      postUpdates[`reactionsSummary.${newEmoji}`] = increment(1);
+    }
+  }
+
+  await updateDoc(postRef, postUpdates).catch((err) =>
+    console.warn('Error updating post reaction fields:', err)
+  );
+
+  // Send notification to author if reacting to another user's post
+  if (postData && postData.authorUid && postData.authorUid !== uid) {
+    createNotification({
+      usuario_destinatario_id: postData.authorUid,
+      usuario_origem_id: uid,
+      usuario_origem_username: userProfile?.username || '',
+      usuario_origem_displayName: userProfile?.displayName || userProfile?.username || '',
+      usuario_origem_photoURL: userProfile?.photoURL || '',
+      tipo: 'curtida_post',
+      post_id: postId,
+      emoji: targetReaction.emoji || null,
+      conteudo_extra: postData.content || '',
+    }).catch((e) => console.warn('Error notifying post author of reaction:', e));
+  }
+}
+
+/**
+ * Toggles simple like on post, synchronizing the 'curtidas' collection and post counters.
+ * Kept for backwards compatibility with setPostReaction as the underlying engine.
  */
 export async function togglePostLike(
   postId: string,
@@ -1206,58 +1384,10 @@ export async function togglePostLike(
   isLiked: boolean,
   userProfile?: UserProfile
 ): Promise<void> {
-  const postRef = doc(db, 'posts', postId);
-  const curtidaRef = doc(db, 'curtidas', `${postId}_${uid}`);
-
   if (isLiked) {
-    // Unliking: remove from post and delete from curtidas collection
-    await updateDoc(postRef, {
-      likes: arrayRemove(uid),
-      likesCount: increment(-1),
-    });
-    try {
-      await deleteDoc(curtidaRef);
-    } catch (err) {
-      console.warn('Error deleting curtida document:', err);
-    }
+    await setPostReaction(postId, uid, null, userProfile);
   } else {
-    // Liking: add to post and save to curtidas collection
-    await updateDoc(postRef, {
-      likes: arrayUnion(uid),
-      likesCount: increment(1),
-    });
-    try {
-      await setDoc(curtidaRef, {
-        id: `${postId}_${uid}`,
-        post_id: postId,
-        usuario_id: uid,
-        criado_em: new Date().toISOString(),
-      });
-    } catch (err) {
-      console.warn('Error saving curtida document:', err);
-    }
-
-    // If liking (not unliking), notify post author
-    try {
-      const postSnap = await getDoc(postRef);
-      if (postSnap.exists()) {
-        const postData = postSnap.data() as PostItem;
-        if (postData.authorUid && postData.authorUid !== uid) {
-          createNotification({
-            usuario_destinatario_id: postData.authorUid,
-            usuario_origem_id: uid,
-            usuario_origem_username: userProfile?.username || '',
-            usuario_origem_displayName: userProfile?.displayName || userProfile?.username || '',
-            usuario_origem_photoURL: userProfile?.photoURL || '',
-            tipo: 'curtida_post',
-            post_id: postId,
-            conteudo_extra: postData.content || '',
-          }).catch((e) => console.warn('Error creating post like notification:', e));
-        }
-      }
-    } catch (e) {
-      console.warn('Error triggering post like notification:', e);
-    }
+    await setPostReaction(postId, uid, { tipo: 'curtir', emoji: null }, userProfile);
   }
 }
 
@@ -1325,9 +1455,13 @@ export function formatEngagementCount(count: number | undefined | null): string 
  * Fetches the list of users who liked a post.
  * Likes are public: accessible to all authenticated users.
  */
-export async function getPostLikers(postId: string): Promise<UserProfile[]> {
+export async function getPostLikers(postId: string): Promise<PostLikerProfile[]> {
   if (!postId) return [];
   try {
+    const userReactionsMap = new Map<
+      string,
+      { tipo: 'curtir' | 'reacao'; emoji: ReactionEmoji | null }
+    >();
     const uids = new Set<string>();
 
     // 1. Query curtidas collection
@@ -1336,8 +1470,14 @@ export async function getPostLikers(postId: string): Promise<UserProfile[]> {
       const q = query(curtidasCol, where('post_id', '==', postId));
       const snap = await getDocs(q);
       snap.forEach((d) => {
-        const data = d.data();
-        if (data.usuario_id) uids.add(data.usuario_id);
+        const data = d.data() as CurtidaItem;
+        if (data.usuario_id) {
+          uids.add(data.usuario_id);
+          userReactionsMap.set(data.usuario_id, {
+            tipo: data.tipo || 'curtir',
+            emoji: data.emoji || (data.tipo === 'curtir' ? '❤️' : null),
+          });
+        }
       });
     } catch (e) {
       console.warn('Could not query curtidas collection:', e);
@@ -1348,18 +1488,33 @@ export async function getPostLikers(postId: string): Promise<UserProfile[]> {
     if (postSnap.exists()) {
       const pData = postSnap.data() as PostItem;
       if (Array.isArray(pData.likes)) {
-        pData.likes.forEach((id) => uids.add(id));
+        pData.likes.forEach((id) => {
+          uids.add(id);
+          if (!userReactionsMap.has(id)) {
+            const stored = pData.userReactions?.[id];
+            userReactionsMap.set(id, {
+              tipo: stored?.tipo || 'curtir',
+              emoji: stored?.emoji || '❤️',
+            });
+          }
+        });
       }
     }
 
     if (uids.size === 0) return [];
 
-    const profiles: UserProfile[] = [];
+    const profiles: PostLikerProfile[] = [];
     for (const uid of uids) {
       try {
         const uSnap = await getDoc(doc(db, 'users', uid));
         if (uSnap.exists()) {
-          profiles.push(uSnap.data() as UserProfile);
+          const uData = uSnap.data() as UserProfile;
+          const rInfo = userReactionsMap.get(uid);
+          profiles.push({
+            ...uData,
+            reactionType: rInfo?.tipo || 'curtir',
+            reactionEmoji: rInfo?.emoji || '❤️',
+          });
         }
       } catch (err) {
         console.warn('Error fetching liker profile:', uid, err);
@@ -2187,6 +2342,7 @@ export async function createNotification(params: {
   post_id?: string | null;
   comentario_id?: string | null;
   conteudo_extra?: string | null;
+  emoji?: ReactionEmoji | null;
 }): Promise<string | null> {
   // Do not notify if recipient is the author themselves
   if (
@@ -2209,6 +2365,7 @@ export async function createNotification(params: {
       post_id: params.post_id || null,
       comentario_id: params.comentario_id || null,
       conteudo_extra: params.conteudo_extra || null,
+      emoji: params.emoji || null,
       lida: false,
       criado_em: new Date().toISOString(),
     };

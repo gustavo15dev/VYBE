@@ -24,6 +24,7 @@ import {
   formatEngagementCount,
   togglePostLike,
 } from '../services/socialService';
+import { PostReactionButton, PostReactionsSummary } from './PostReactions';
 import { usePostViewObserver } from '../hooks/usePostViewObserver';
 
 import { ReportTargetType } from '../types/social';
@@ -649,43 +650,28 @@ export function PostCommentsPanel({
 
       {/* Engagements Summary & Action Bar */}
       <div className="bg-white border-t border-gray-100 flex flex-col shrink-0">
-        <div className="px-4 py-2 flex items-center justify-between text-gray-600">
+        <PostReactionsSummary
+          post={post}
+          onOpenEngagements={onOpenEngagements}
+          onOpenComments={() => inputRef.current?.focus()}
+          className="px-4 pt-2 pb-1"
+        />
+        <div className="px-4 py-2 border-t border-gray-50 flex items-center justify-between text-gray-600">
           <div className="flex items-center gap-4">
-            <button
-              type="button"
-              onClick={handleTogglePostLike}
-              className="flex items-center gap-1.5 text-xs font-semibold hover:text-gray-900 transition-colors cursor-pointer"
-            >
-              <Heart
-                className={`w-5 h-5 transition-transform active:scale-125 ${
-                  user?.uid && post.likes.includes(user.uid) ? 'fill-rose-500 text-rose-500' : 'text-gray-600'
-                }`}
-              />
-            </button>
+            <PostReactionButton
+              post={post}
+              currentUid={user?.uid}
+              userProfile={profile || undefined}
+            />
             <button
               type="button"
               onClick={() => inputRef.current?.focus()}
               className="flex items-center gap-1.5 text-xs font-semibold hover:text-gray-900 transition-colors cursor-pointer"
             >
               <MessageSquare className="w-4.5 h-4.5 text-gray-500" />
+              <span>Comentar</span>
             </button>
           </div>
-        </div>
-        <div className="px-4 pb-2 flex items-center justify-between text-xs font-semibold text-gray-500">
-          <button
-            type="button"
-            onClick={() => onOpenEngagements?.(post, 'curtidas')}
-            className="hover:text-gray-900 transition-colors cursor-pointer"
-          >
-            {formatEngagementCount(typeof post.likesCount === 'number' ? post.likesCount : post.likes.length)} curtidas
-          </button>
-          <button
-            type="button"
-            onClick={() => onOpenEngagements?.(post, 'visualizacoes')}
-            className="hover:text-gray-900 transition-colors cursor-pointer"
-          >
-            {formatEngagementCount(post.viewsCount || 0)} visualizações
-          </button>
         </div>
       </div>
 

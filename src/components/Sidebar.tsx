@@ -1,9 +1,8 @@
-import { Home, Compass, Users, MessageCircle, Bell, Plus, User, BarChart3 } from 'lucide-react';
+import { Home, Users, MessageCircle, Bell, Plus, User, BarChart3 } from 'lucide-react';
 
 export type AppView =
   | 'home'
   | 'friends'
-  | 'explore'
   | 'messages'
   | 'notifications'
   | 'profile'
@@ -43,7 +42,6 @@ export function Sidebar({
     if (view && onViewChange) {
       if (
         view === 'home' ||
-        view === 'explore' ||
         view === 'friends' ||
         view === 'messages' ||
         view === 'notifications' ||
@@ -60,7 +58,6 @@ export function Sidebar({
 
   const navItems: { name: string; icon: any; view: AppView }[] = [
     { name: 'Início', icon: Home, view: 'home' },
-    { name: 'Explorar', icon: Compass, view: 'explore' },
     { name: 'Amigos', icon: Users, view: 'friends' },
     { name: 'Mensagens', icon: MessageCircle, view: 'messages' },
     { name: 'Notificações', icon: Bell, view: 'notifications' },

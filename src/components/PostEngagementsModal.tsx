@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { X, Search, Lock, Users, Eye, Heart, Loader2 } from 'lucide-react';
-import { PostItem } from '../types/social';
+import { PostItem, PostLikerProfile, ReactionEmoji } from '../types/social';
 import { UserProfile } from '../types/user';
 import {
   getPostLikers,
@@ -39,7 +39,8 @@ export function PostEngagementsModal({
 }: PostEngagementsModalProps) {
   const [activeTab, setActiveTab] = useState<EngagementTab>(initialTab);
   const [searchQuery, setSearchQuery] = useState('');
-  const [likers, setLikers] = useState<UserProfile[]>([]);
+  const [selectedReactionFilter, setSelectedReactionFilter] = useState<ReactionEmoji | 'all'>('all');
+  const [likers, setLikers] = useState<PostLikerProfile[]>([]);
   const [viewers, setViewers] = useState<UserProfile[]>([]);
   const [canViewViewersList, setCanViewViewersList] = useState(false);
   const [isLoadingLikers, setIsLoadingLikers] = useState(false);
@@ -60,6 +61,7 @@ export function PostEngagementsModal({
     if (isOpen) {
       setActiveTab(initialTab);
       setSearchQuery('');
+      setSelectedReactionFilter('all');
     }
   }, [isOpen, initialTab, post?.id]);
 
@@ -120,16 +122,32 @@ export function PostEngagementsModal({
     return Math.max(postViews, viewers.length);
   }, [post, viewers.length]);
 
-  // Filtered lists based on search
+  // Available reaction emojis among current likers
+  const availableEmojiFilters = useMemo(() => {
+    const counts: Record<string, number> = {};
+    likers.forEach((l) => {
+      const em = l.reactionEmoji || '❤️';
+      counts[em] = (counts[em] || 0) + 1;
+    });
+    return Object.entries(counts).sort((a, b) => b[1] - a[1]);
+  }, [likers]);
+
+  // Filtered lists based on search and reaction emoji filter
   const filteredLikers = useMemo(() => {
-    if (!searchQuery.trim()) return likers;
-    const q = searchQuery.toLowerCase().trim();
-    return likers.filter(
-      (u) =>
-        u.username.toLowerCase().includes(q) ||
-        (u.displayName && u.displayName.toLowerCase().includes(q))
-    );
-  }, [likers, searchQuery]);
+    let result = likers;
+    if (selectedReactionFilter !== 'all') {
+      result = result.filter((u) => (u.reactionEmoji || '❤️') === selectedReactionFilter);
+    }
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim();
+      result = result.filter(
+        (u) =>
+          u.username.toLowerCase().includes(q) ||
+          (u.displayName && u.displayName.toLowerCase().includes(q))
+      );
+    }
+    return result;
+  }, [likers, selectedReactionFilter, searchQuery]);
 
   const filteredViewers = useMemo(() => {
     if (!searchQuery.trim()) return viewers;
@@ -230,6 +248,40 @@ export function PostEngagementsModal({
           </div>
         )}
 
+        {/* Reaction Emoji Filter Chips Bar */}
+        {activeTab === 'curtidas' && availableEmojiFilters.length > 1 && (
+          <div className="flex items-center gap-1.5 px-3 py-2 bg-white border-b border-gray-100 overflow-x-auto no-scrollbar shrink-0">
+            <button
+              id="filter-reaction-all"
+              type="button"
+              onClick={() => setSelectedReactionFilter('all')}
+              className={`px-3 py-1 rounded-full text-xs font-semibold shrink-0 transition-colors cursor-pointer ${
+                selectedReactionFilter === 'all'
+                  ? 'bg-[#548687] text-white'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              Todas ({likers.length})
+            </button>
+            {availableEmojiFilters.map(([emoji, count]) => (
+              <button
+                key={emoji}
+                id={`filter-reaction-${emoji}`}
+                type="button"
+                onClick={() => setSelectedReactionFilter(emoji as ReactionEmoji)}
+                className={`px-2.5 py-1 rounded-full text-xs font-semibold shrink-0 flex items-center gap-1 transition-colors cursor-pointer ${
+                  selectedReactionFilter === emoji
+                    ? 'bg-[#548687] text-white'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                <span>{emoji}</span>
+                <span className="text-[11px] opacity-90">{count}</span>
+              </button>
+            ))}
+          </div>
+        )}
+
         {/* Content Body: Scrollable Users List or Privacy Notice */}
         <div className="flex-1 overflow-y-auto min-h-[300px] max-h-[500px]">
           {/* TAB 1: CURTIDAS */}
@@ -249,6 +301,7 @@ export function PostEngagementsModal({
                       targetUser.displayName?.[0]?.toUpperCase() ||
                       targetUser.username[0]?.toUpperCase() ||
                       'V';
+                    const reactionEmoji = targetUser.reactionEmoji || '❤️';
 
                     return (
                       <div
@@ -263,16 +316,25 @@ export function PostEngagementsModal({
                           }}
                           className="flex items-center gap-3 min-w-0 cursor-pointer group flex-1 mr-2"
                         >
-                          <div className="w-11 h-11 rounded-full bg-[#E1EEEE] text-[#426F70] flex items-center justify-center font-bold text-sm overflow-hidden shrink-0 border border-gray-100 group-hover:scale-105 transition-transform">
-                            {targetUser.photoURL ? (
-                              <img
-                                src={targetUser.photoURL}
-                                alt={targetUser.username}
-                                className="w-full h-full object-cover"
-                              />
-                            ) : (
-                              <span>{initial}</span>
-                            )}
+                          <div className="relative shrink-0">
+                            <div className="w-11 h-11 rounded-full bg-[#E1EEEE] text-[#426F70] flex items-center justify-center font-bold text-sm overflow-hidden border border-gray-100 group-hover:scale-105 transition-transform">
+                              {targetUser.photoURL ? (
+                                <img
+                                  src={targetUser.photoURL}
+                                  alt={targetUser.username}
+                                  className="w-full h-full object-cover"
+                                />
+                              ) : (
+                                <span>{initial}</span>
+                              )}
+                            </div>
+                            {/* Emoji reaction badge */}
+                            <div
+                              className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-white shadow-xs border border-white flex items-center justify-center text-[11px] select-none"
+                              title={`Reagiu com ${reactionEmoji}`}
+                            >
+                              {reactionEmoji}
+                            </div>
                           </div>
                           <div className="min-w-0">
                             <div className="font-bold text-gray-900 text-sm leading-snug truncate group-hover:text-[#548687] transition-colors">

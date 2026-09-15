@@ -118,6 +118,7 @@ export function aggregateNotifications(
       tipo: newest.tipo,
       post_id: newest.post_id,
       comentario_id: newest.comentario_id,
+      emoji: newest.emoji || null,
       usuario_origem_principal: principalUser,
       outros_usuarios_count: othersCount,
       usuarios_origem: uniqueUsers,

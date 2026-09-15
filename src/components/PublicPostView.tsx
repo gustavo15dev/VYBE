@@ -13,6 +13,7 @@ import {
 } from '../services/socialService';
 import { FollowButton } from './FollowButton';
 import { VerifiedBadge } from './VerifiedBadge';
+import { PostReactionButton, PostReactionsSummary } from './PostReactions';
 import { usePostViewObserver } from '../hooks/usePostViewObserver';
 import { FormattedText } from './FormattedText';
 import {
@@ -558,19 +559,27 @@ export function PublicPostView({
 
           {/* 4. Bottom Engagement Bar & Actions */}
           <div className="p-4 border-t border-gray-100 bg-white shrink-0">
-            <div className="flex items-center justify-between mb-2">
+            {/* Reactions summary with top emojis + count */}
+            <PostReactionsSummary
+              post={post}
+              onOpenEngagements={(p, tab) => {
+                if (isLoggedIn && onOpenEngagements) {
+                  onOpenEngagements(p, tab);
+                } else if (onOpenAuthModal) {
+                  onOpenAuthModal('login', 'ver interações');
+                }
+              }}
+              className="px-0 pt-0 pb-2"
+            />
+
+            <div className="flex items-center justify-between">
               <div className="flex items-center gap-4">
-                <button
-                  type="button"
-                  onClick={handleLikePost}
-                  className="flex items-center gap-1.5 text-xs font-semibold hover:text-gray-900 transition-colors cursor-pointer"
-                >
-                  <Heart
-                    className={`w-5 h-5 transition-transform active:scale-125 ${
-                      isLikedByMe ? 'fill-rose-500 text-rose-500' : 'text-gray-600'
-                    }`}
-                  />
-                </button>
+                <PostReactionButton
+                  post={post}
+                  currentUid={user?.uid}
+                  userProfile={profile || undefined}
+                  onRequireAuth={() => onOpenAuthModal?.('login', 'reagir')}
+                />
                 <button
                   type="button"
                   onClick={() => {
@@ -581,6 +590,7 @@ export function PublicPostView({
                   className="flex items-center gap-1.5 text-xs font-semibold hover:text-gray-900 transition-colors cursor-pointer text-gray-600"
                 >
                   <MessageSquare className="w-5 h-5" />
+                  <span>Comentar</span>
                 </button>
                 <button
                   type="button"
@@ -589,38 +599,9 @@ export function PublicPostView({
                   title="Compartilhar"
                 >
                   <Share2 className="w-4.5 h-4.5" />
+                  <span>Compartilhar</span>
                 </button>
               </div>
-            </div>
-
-            {/* Counters */}
-            <div className="flex items-center justify-between text-xs font-semibold text-gray-600">
-              <button
-                type="button"
-                onClick={() => {
-                  if (isLoggedIn && onOpenEngagements) {
-                    onOpenEngagements(post, 'curtidas');
-                  } else if (onOpenAuthModal) {
-                    onOpenAuthModal('login', 'ver quem curtiu');
-                  }
-                }}
-                className="hover:text-gray-900 transition-colors cursor-pointer"
-              >
-                {formatEngagementCount(typeof post.likesCount === 'number' ? post.likesCount : post.likes.length)} curtidas
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  if (isLoggedIn && onOpenEngagements) {
-                    onOpenEngagements(post, 'visualizacoes');
-                  } else if (onOpenAuthModal) {
-                    onOpenAuthModal('login', 'ver estatísticas de visualizações');
-                  }
-                }}
-                className="hover:text-gray-900 transition-colors cursor-pointer text-gray-500"
-              >
-                {formatEngagementCount(post.viewsCount || 0)} visualizações
-              </button>
             </div>
 
             {/* Comment Input Box for Logged In user */}

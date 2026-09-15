@@ -15,7 +15,6 @@ import { DeletePostConfirmModal } from './components/DeletePostConfirmModal';
 import { PostCommentsPanel } from './components/PostCommentsPanel';
 import { MessagesView } from './components/MessagesView';
 import { NotificationsView } from './components/NotificationsView';
-import { ExploreView } from './components/ExploreView';
 import { SettingsView } from './components/SettingsView';
 import { InsightsView } from './components/InsightsView';
 import { AdminPanel } from './components/AdminPanel';
@@ -42,7 +41,7 @@ import {
   subscribeOutgoingFollowRequests,
   cleanupSeedData,
 } from './services/socialService';
-import { Loader2, Home, Users, MessageCircle, Bell, Compass, User, BarChart3 } from 'lucide-react';
+import { Loader2, Home, Users, MessageCircle, Bell, User, BarChart3 } from 'lucide-react';
 
 function AppContent() {
   const { user, profile, loading, needsProfileCompletion, setProfile, logout } = useAuth();
@@ -778,20 +777,6 @@ function AppContent() {
               onShowToast={addToast}
             />
           </div>
-        ) : currentView === 'explore' ? (
-          <div className="flex-1 min-w-0 bg-white min-h-[calc(100vh-68px)]">
-            <ExploreView
-              allUsers={allUsers}
-              myFollowing={myFollowing}
-              myFollowers={myFollowers}
-              myOutgoingRequests={myOutgoingRequests}
-              allFollows={allFollows}
-              onOpenPostDetail={handleOpenComments}
-              onSelectUser={handleSelectUser}
-              onShowToast={addToast}
-              onOpenEngagements={(post, tab) => setEngagementsModalState({ post, initialTab: tab })}
-            />
-          </div>
         ) : currentView === 'insights' ? (
           <div className="flex-1 min-w-0 bg-[#F9FBFC] min-h-[calc(100vh-68px)]">
             <InsightsView
@@ -825,16 +810,6 @@ function AppContent() {
         >
           <Home className="w-5 h-5" />
           <span className="text-[10px] font-medium">Início</span>
-        </button>
-
-        <button
-          onClick={() => setCurrentView('explore')}
-          className={`p-1.5 flex flex-col items-center gap-0.5 cursor-pointer ${
-            currentView === 'explore' ? 'text-[#548687]' : 'text-gray-500'
-          }`}
-        >
-          <Compass className="w-5 h-5" />
-          <span className="text-[10px] font-medium">Explorar</span>
         </button>
 
         <button

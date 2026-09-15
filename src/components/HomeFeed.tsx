@@ -29,6 +29,7 @@ import { UserProfile } from '../types/user';
 import { FormattedText } from './FormattedText';
 import { VerifiedBadge } from './VerifiedBadge';
 import { FollowButton } from './FollowButton';
+import { PostReactionButton, PostReactionsSummary } from './PostReactions';
 import {
   subscribeActiveStories,
   subscribePosts,
@@ -803,40 +804,22 @@ export function HomeFeed({
                   </div>
                 )}
 
-                {/* Engagements Summary (Likes & Views) */}
-                <div className="px-4 pb-2 pt-1 flex items-center justify-between text-xs font-semibold text-gray-500">
-                  <button
-                    type="button"
-                    onClick={() => onOpenEngagements?.(post, 'curtidas')}
-                    className="hover:text-gray-900 transition-colors cursor-pointer"
-                  >
-                    {formatEngagementCount(typeof post.likesCount === 'number' ? post.likesCount : post.likes.length)} curtidas
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onOpenEngagements?.(post, 'visualizacoes')}
-                    className="hover:text-gray-900 transition-colors cursor-pointer"
-                  >
-                    {formatEngagementCount(post.viewsCount || 0)} visualizações
-                  </button>
-                </div>
+                {/* Engagements Summary (Top Emojis, Count & Comments - Mockup Style) */}
+                <PostReactionsSummary
+                  post={post}
+                  onOpenEngagements={onOpenEngagements}
+                  onOpenComments={onOpenComments}
+                />
 
-                {/* Post Action Bar (Like, Comment, Share, Save) */}
+                {/* Post Action Bar (Like/React, Comment, Share, Save) */}
                 <div className="px-4 py-3 border-t border-gray-100 flex items-center justify-between text-gray-600">
                   <div className="flex items-center gap-4">
-                    <button
-                      id={`btn-like-post-${post.id}`}
-                      type="button"
-                      onClick={() => handleTogglePostLike(post)}
-                      className="flex items-center gap-1.5 text-xs font-semibold hover:text-gray-900 transition-colors cursor-pointer"
-                    >
-                      <Heart
-                        className={`w-5 h-5 transition-transform active:scale-125 ${
-                          isLiked ? 'fill-rose-500 text-rose-500' : 'text-gray-600'
-                        }`}
-                      />
-                      <span>{post.likes.length > 0 ? post.likes.length : 'Curtir'}</span>
-                    </button>
+                    <PostReactionButton
+                      post={post}
+                      currentUid={user?.uid}
+                      userProfile={profile || undefined}
+                      onRequireAuth={() => onShowToast?.('Faça login para reagir a esta publicação.', 'info')}
+                    />
 
                     <button
                       id={`btn-comment-post-${post.id}`}

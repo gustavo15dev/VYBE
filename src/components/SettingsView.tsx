@@ -15,6 +15,7 @@ import {
   subscribeMyBlockedUsers,
 } from '../services/socialService';
 import { optimizeImage } from '../utils/mediaOptimizer';
+import { VerifiedBadge } from './VerifiedBadge';
 import {
   User,
   Lock,
@@ -1614,16 +1615,17 @@ export function SettingsView({
               </div>
 
               {currentUserProfile.verificado ? (
-                <div className="p-4 bg-emerald-50 border border-emerald-100 rounded-2xl flex items-start gap-3">
-                  <div className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0">
-                    <Check className="w-4 h-4 stroke-[3]" />
+                <div className="p-4 bg-sky-50 border border-sky-100 rounded-2xl flex items-start gap-3.5">
+                  <div className="w-9 h-9 rounded-2xl bg-white shadow-xs border border-sky-100 flex items-center justify-center shrink-0">
+                    <VerifiedBadge verified={true} size={24} />
                   </div>
                   <div>
-                    <h3 className="font-bold text-emerald-900 text-sm">
-                      Perfil verificado!
+                    <h3 className="font-bold text-gray-900 text-sm flex items-center gap-1.5">
+                      <span>Perfil verificado</span>
+                      <VerifiedBadge verified={true} size={15} />
                     </h3>
-                    <p className="text-xs text-emerald-700 mt-0.5 leading-relaxed">
-                      Seu perfil já possui o selo de verificação oficial da VYBE. Parabéns!
+                    <p className="text-xs text-gray-600 mt-0.5 leading-relaxed">
+                      Seu perfil possui o selo oficial de verificação da VYBE. Parabéns!
                     </p>
                   </div>
                 </div>

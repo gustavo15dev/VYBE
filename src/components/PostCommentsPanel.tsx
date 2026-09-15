@@ -268,34 +268,24 @@ export function PostCommentsPanel({
   // The actual comments panel content (Right Column in image.png)
   const commentsPanelContent = (
     <div className="flex flex-col h-full bg-white relative">
-      {/* 1. Header (Cabeçalho do post como em image.png) */}
-      <div className="px-4 py-3.5 border-b border-gray-100 flex items-center justify-between shrink-0 bg-white">
-        <div className="flex items-center gap-3 min-w-0 pr-2">
-          <div
-            onClick={() => onSelectUser?.(post.authorUid)}
-            className="w-8 h-8 rounded-full bg-[#548687] text-white flex items-center justify-center font-bold text-xs shrink-0 overflow-hidden cursor-pointer hover:opacity-90 transition-opacity"
-          >
+      {/* 1. Header (Top Bar with Author & Controls) */}
+      <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between shrink-0 bg-white">
+        <div
+          onClick={() => onSelectUser?.(post.authorUid)}
+          className="flex items-center gap-2.5 min-w-0 cursor-pointer group"
+        >
+          <div className="w-8 h-8 rounded-full bg-[#548687] text-white flex items-center justify-center font-bold text-xs shrink-0 overflow-hidden group-hover:opacity-90 transition-opacity">
             {post.authorPhotoURL ? (
               <img src={post.authorPhotoURL} alt={post.authorUsername} className="w-full h-full object-cover" />
             ) : (
               <span>{authorInitial}</span>
             )}
           </div>
-          <div className="min-w-0 text-sm leading-snug">
-            <span
-              onClick={() => onSelectUser?.(post.authorUid)}
-              className="font-bold text-gray-900 mr-1.5 cursor-pointer hover:text-[#548687] transition-colors"
-            >
+          <div className="min-w-0 flex items-center gap-1">
+            <span className="font-bold text-gray-900 text-sm truncate group-hover:text-[#548687] transition-colors">
               {post.authorUsername}
             </span>
-            <span className="text-gray-700 whitespace-pre-line break-words text-[13px]">
-              <FormattedText
-                text={post.content || ''}
-                onSelectUser={onSelectUser}
-                onSelectHashtag={onSelectHashtag}
-                allUsers={allUsers}
-              />
-            </span>
+            <VerifiedBadge uid={post.authorUid} allUsers={allUsers} size={13} />
           </div>
         </div>
 
@@ -385,6 +375,26 @@ export function PostCommentsPanel({
           </button>
         </div>
       </div>
+
+      {/* 2. Post Caption (Bounded scrollable container so it never pushes comments off-screen) */}
+      {post.content && (
+        <div className="px-4 py-3 border-b border-gray-100 bg-[#FAFBFB]/70 shrink-0 max-h-36 sm:max-h-44 overflow-y-auto text-xs sm:text-sm text-gray-800 leading-relaxed">
+          <span
+            onClick={() => onSelectUser?.(post.authorUid)}
+            className="font-bold text-gray-900 mr-1.5 cursor-pointer hover:text-[#548687] transition-colors"
+          >
+            {post.authorUsername}
+          </span>
+          <span className="text-gray-700 whitespace-pre-line break-words text-[13px]">
+            <FormattedText
+              text={post.content || ''}
+              onSelectUser={onSelectUser}
+              onSelectHashtag={onSelectHashtag}
+              allUsers={allUsers}
+            />
+          </span>
+        </div>
+      )}
 
       {/* 2. Comments List with internal scroll */}
       <div
@@ -792,8 +802,8 @@ export function PostCommentsPanel({
                 />
               )
             ) : (
-              <div className="p-8 text-center text-white max-w-sm">
-                <p className="text-lg font-medium whitespace-pre-line leading-relaxed">
+              <div className="w-full h-full max-h-full overflow-y-auto p-6 sm:p-10 text-center text-white flex flex-col items-center justify-center">
+                <p className="text-base sm:text-lg font-medium whitespace-pre-line leading-relaxed max-w-lg mx-auto break-words">
                   {post.content}
                 </p>
               </div>

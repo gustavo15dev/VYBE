@@ -9,6 +9,7 @@ import {
   subscribeOutgoingFollowRequests,
 } from '../services/socialService';
 import { FollowButton } from './FollowButton';
+import { VerifiedBadge } from './VerifiedBadge';
 
 export type EngagementTab = 'curtidas' | 'visualizacoes';
 
@@ -337,8 +338,9 @@ export function PostEngagementsModal({
                             </div>
                           </div>
                           <div className="min-w-0">
-                            <div className="font-bold text-gray-900 text-sm leading-snug truncate group-hover:text-[#548687] transition-colors">
-                              {targetUser.username}
+                            <div className="font-bold text-gray-900 text-sm leading-snug truncate group-hover:text-[#548687] transition-colors flex items-center gap-1">
+                              <span>{targetUser.username}</span>
+                              <VerifiedBadge verified={targetUser.verificado} size={14} />
                             </div>
                             <div className="text-xs text-gray-500 leading-tight mt-0.5 truncate">
                               {followsMe ? (
@@ -454,8 +456,9 @@ export function PostEngagementsModal({
                             )}
                           </div>
                           <div className="min-w-0">
-                            <div className="font-bold text-gray-900 text-sm leading-snug truncate group-hover:text-[#548687] transition-colors">
-                              {targetUser.username}
+                            <div className="font-bold text-gray-900 text-sm leading-snug truncate group-hover:text-[#548687] transition-colors flex items-center gap-1">
+                              <span>{targetUser.username}</span>
+                              <VerifiedBadge verified={targetUser.verificado} size={14} />
                             </div>
                             <div className="text-xs text-gray-500 leading-tight mt-0.5 truncate">
                               {followsMe ? (

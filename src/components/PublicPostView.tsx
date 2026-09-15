@@ -409,9 +409,9 @@ export function PublicPostView({
               />
             )
           ) : (
-            <div className="p-8 text-white text-center flex flex-col items-center justify-center max-w-md">
-              <Film className="w-12 h-12 text-gray-600 mb-3" />
-              <p className="text-base font-medium leading-relaxed">{post.content}</p>
+            <div className="w-full h-full max-h-full overflow-y-auto p-6 sm:p-10 text-white text-center flex flex-col items-center justify-center max-w-lg mx-auto">
+              <Film className="w-10 h-10 text-gray-600 mb-3 shrink-0" />
+              <p className="text-sm sm:text-base font-medium leading-relaxed whitespace-pre-line break-words">{post.content}</p>
             </div>
           )}
 
@@ -480,7 +480,7 @@ export function PublicPostView({
 
           {/* 2. Caption Area */}
           {post.content && (
-            <div className="p-4 border-b border-gray-100 text-xs sm:text-sm text-gray-800 leading-relaxed bg-[#FAFBFB]/50 shrink-0">
+            <div className="p-4 border-b border-gray-100 text-xs sm:text-sm text-gray-800 leading-relaxed bg-[#FAFBFB]/50 shrink-0 max-h-36 sm:max-h-44 overflow-y-auto">
               <span
                 onClick={() => onSelectUser?.(post.authorUid)}
                 className="font-bold text-gray-900 mr-1.5 hover:underline cursor-pointer"

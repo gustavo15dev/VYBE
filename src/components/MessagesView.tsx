@@ -338,7 +338,9 @@ export function MessagesView({
     activeConv?.status === 'pendente' && activeConv.destinatario_id === profile?.uid;
 
   const isPendingSender =
-    activeConv?.status === 'pendente' && activeConv.solicitante_id === profile?.uid;
+    activeConv?.status === 'pendente' &&
+    activeConv.solicitante_id === profile?.uid &&
+    messages.length > 0;
 
   const otherUser = activeConv ? getOtherUser(activeConv) : null;
 

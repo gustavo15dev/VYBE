@@ -328,7 +328,11 @@ export function HomeFeed({
               key={group.authorUid}
               id={`story-user-${group.authorUsername}`}
               type="button"
-              onClick={() => handleOtherStoryClick(index)}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleOtherStoryClick(index);
+              }}
               className="flex flex-col items-center gap-1.5 shrink-0 group cursor-pointer focus:outline-none"
             >
               <div
